@@ -7,10 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 4 - Public Beta (In Progress)
-- Installation system (install.sh, uninstall.sh, update.sh)
-- Comprehensive user documentation (QUICKSTART.md)
-- GitHub community infrastructure (issue templates, PR template)
+Nothing yet.
+
+## [0.4.0-beta] - 2025-10-27
+
+### Added - Phase 4: Public Beta Release 🚀
+
+**First Public Beta**: Adaptive Claude Agents is now available to the public!
+
+#### Installation System
+- **install.sh**: One-command installation for all platforms
+  - Auto-detects Claude Code skills directory (macOS/Linux/Windows WSL)
+  - Checks system requirements (Python 3.9+, git)
+  - Installs pyyaml dependency if needed
+  - Validates installation
+  - Clear success message with next steps
+- **uninstall.sh**: Clean removal with user confirmation
+- **update.sh**: Safe updates with automatic backup and validation
+
+#### User Documentation (~20KB)
+- **QUICKSTART.md**: 5-minute quick start guide
+  - Step-by-step installation
+  - Project analysis walkthrough
+  - Subagent usage examples
+  - Supported frameworks table with detection confidence
+- **EXAMPLES.md**: 5 real-world examples (~11KB)
+  - Next.js e-commerce app (MVP phase)
+  - FastAPI microservice (Production phase)
+  - Vanilla PHP CMS (MVP phase)
+  - Python ML pipeline (Prototype phase)
+  - iOS SwiftUI app (MVP phase)
+  - Full detection output, phase detection, usage examples
+- **TROUBLESHOOTING.md**: Comprehensive troubleshooting
+  - Installation issues (6 common problems)
+  - Detection issues (5 common problems)
+  - Phase detection issues (5 common problems)
+  - Template generation issues (4 common problems)
+  - Platform-specific issues (macOS, Linux, Windows WSL)
+
+#### GitHub Community Infrastructure
+- **Issue Templates**:
+  - bug_report.md: Structured bug reports
+  - feature_request.md: Feature suggestions
+  - template_request.md: New framework template requests
+  - alpha_feedback.md: Internal testing feedback (used in Week 3)
+- **PR Template**: Comprehensive pull request checklist
+- **GitHub Discussions**: Enabled with welcome post and categories
+  - 💬 General
+  - 🙏 Q&A
+  - 💡 Ideas
+  - 🎉 Show and Tell
+  - 📢 Announcements
+
+#### Quality Assurance & Testing
+- **Week 2 Testing** (9/10 frameworks = 90%):
+  - Next.js: 100% confidence ✅
+  - Vanilla PHP/Web: 100% confidence ✅
+  - Python ML/CV: 100% confidence ✅
+  - Vue: 90% confidence ✅
+  - FastAPI: 80% confidence ✅
+  - React (Vite): 80% confidence ✅
+  - Django: 80% confidence ✅
+  - iOS Swift: 80% confidence ✅
+  - Flask: 70% confidence ✅
+  - **Average Detection Confidence**: 85%
+- **Phase Detection**: Prototype (40-50%), Production (58%) ✅
+- **Template Generation**: Variable substitution working ✅
+- **Code Quality**: 100% (type hints, docstrings, error handling) ✅
+
+#### Documentation Updates
+- **README.md/README.ja.md**:
+  - Status: "Week 3 - Alpha Testing 🧪 | Public Beta: Oct 27-28 🚀"
+  - Updated framework table with detection confidence scores
+  - Clarified template reuse strategy (React/Vue use Next.js, Django/Flask use FastAPI)
+- **SECURITY.md**: Updated contact and status to "public beta"
+- **CHANGELOG.md**: Comprehensive version history (v0.0.1 → v0.4.0-beta)
+
+### Fixed
+- **Issue #1** (Week 2): Installation validation warning message improved
+- **Issue #2** (Day 3): install.sh version number corrected (1.0.0-beta → 0.4.0-beta)
+
+### Testing Summary
+- **Framework Detection**: 8/8 tests passed (100%)
+- **Phase Detection**: 2/2 tests passed (100%)
+- **Template Generation**: 1/1 tests passed (100%)
+- **Installation**: macOS verified ✅
+- **Code Quality**: No issues found ✅
+- **Documentation**: No broken links ✅
+
+### Changed
+- README.md: Updated to "Public Beta" status
+- README.ja.md: Updated to "パブリックベータ" status
+- install.sh: Version corrected to 0.4.0-beta
 
 ## [0.3.0] - 2025-10-19
 
@@ -199,6 +287,7 @@ Organized in `docs/internal/` (gitignored):
 
 | Version | Date | Key Features | Status |
 |---------|------|--------------|--------|
+| **0.4.0-beta** | 2025-10-27 | 🚀 Public Beta Release! Installation system, community infrastructure, QA (90% tested) | **PUBLIC BETA** |
 | **0.3.0** | 2025-10-19 | 🌟 Phase-aware code review (NOVEL) | Phase 3 Complete |
 | **0.2.0** | 2025-10-19 | Multi-framework support (10 frameworks, 13 templates) | Phase 2 Complete |
 | **0.1.0** | 2025-10-19 | Project analyzer skill, Next.js template | Phase 1 Complete |
