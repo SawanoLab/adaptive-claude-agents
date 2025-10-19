@@ -1,7 +1,7 @@
 # Adaptive Claude Agents
 
-> **🚧 Status**: Early Development (Phase 1)
-> Currently implementing core functionality. Star & Watch for updates!
+> **🚧 Status**: Phase 2 Complete!
+> Core detection + 10 frameworks supported. Phase 3 (Adaptive Review) coming soon!
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Development Status](https://img.shields.io/badge/status-pre--alpha-red)](https://github.com/SawanoLab/adaptive-claude-agents)
@@ -58,7 +58,7 @@ Automatically adjusts based on development phase markers in your codebase.
 ## ✨ Key Features
 
 - ✅ **Zero Configuration**: Works out of the box
-- ✅ **Tech Stack Agnostic**: Supports Next.js, FastAPI, Go, React Native, and more
+- ✅ **Tech Stack Agnostic**: Supports 10 frameworks (Next.js, FastAPI, vanilla PHP, Python ML, iOS Swift, and more)
 - ✅ **Phase-Aware**: Adapts review rigor automatically
 - ✅ **Global Skills**: One setup, works everywhere
 - ✅ **Community Templates**: Easy to add new tech stacks
@@ -129,6 +129,25 @@ adaptive-claude-agents/
 - [ ] **Phase 4**: Public beta release
 
 See our [internal project board](https://github.com/SawanoLab/adaptive-claude-agents/projects) for detailed progress.
+
+---
+
+## 📦 Supported Frameworks (Phase 2)
+
+| Framework | Templates | Status |
+|-----------|-----------|--------|
+| **Next.js** | tester | ✅ Phase 1 |
+| **Vanilla PHP/Web** | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ Phase 2 |
+| **FastAPI** | api-developer, api-tester, sqlalchemy-specialist | ✅ Phase 2 |
+| **Python ML/CV** | python-ml-developer, cv-specialist | ✅ Phase 2 |
+| **iOS Swift** | swift-developer | ✅ Phase 2 |
+| **React** | Basic detection | 🚧 Phase 1 |
+| **Vue** | Basic detection | 🚧 Phase 1 |
+| **Django** | Basic detection | 🚧 Phase 1 |
+| **Flask** | Basic detection | 🚧 Phase 1 |
+| **Flutter** | Basic detection | 🚧 Phase 1 |
+
+**Total**: 10 frameworks detected, 13 specialized templates
 
 ---
 

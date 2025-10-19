@@ -99,6 +99,9 @@ class TechStackDetector:
             self._detect_fastapi() or
             self._detect_django() or
             self._detect_flask() or
+            self._detect_vanilla_php_web() or
+            self._detect_python_ml() or
+            self._detect_ios_swift() or
             self._detect_go() or
             self._detect_flutter()
         )
@@ -310,7 +313,18 @@ class TechStackDetector:
         )
 
     def _detect_fastapi(self) -> Optional[DetectionResult]:
-        """Detect FastAPI projects."""
+        """
+        Detect FastAPI projects.
+        
+        Detection criteria:
+        - requirements.txt or pyproject.toml with 'fastapi'
+        - Python files with FastAPI imports
+        - FastAPI-specific patterns (APIRouter, dependencies, etc.)
+        - Common tools: pytest, SQLAlchemy, pydantic, uvicorn
+        
+        Returns:
+            DetectionResult if FastAPI detected, None otherwise
+        """
         # Check for Python project files
         if not any([
             (self.project_path / "requirements.txt").exists(),
@@ -321,45 +335,169 @@ class TechStackDetector:
 
         confidence = 0.0
         indicators = []
+        version = None
+        tools = {}
 
         # Check requirements.txt
         requirements_file = self.project_path / "requirements.txt"
         if requirements_file.exists():
             try:
                 with open(requirements_file, 'r', encoding='utf-8') as f:
-                    requirements = f.read().lower()
-                    if 'fastapi' in requirements:
-                        confidence += 0.6
-                        indicators.append("'fastapi' in requirements.txt: +0.6")
+                    requirements = f.read()
+                    requirements_lower = requirements.lower()
+                    
+                    # Check for FastAPI
+                    if 'fastapi' in requirements_lower:
+                        confidence += 0.5
+                        indicators.append("'fastapi' in requirements.txt: +0.5")
+                        
+                        # Try to extract version
+                        for line in requirements.splitlines():
+                            if 'fastapi' in line.lower() and '==' in line:
+                                version = line.split('==')[1].strip()
+                                break
+                    
+                    # Check for common FastAPI tools
+                    if 'uvicorn' in requirements_lower:
+                        tools.setdefault('server', []).append('uvicorn')
+                        confidence += 0.05
+                        indicators.append("'uvicorn' server: +0.05")
+                    
+                    if 'pytest' in requirements_lower or 'pytest-asyncio' in requirements_lower:
+                        tools.setdefault('testing', []).append('pytest')
+                        if 'pytest-asyncio' in requirements_lower:
+                            tools['testing'].append('pytest-asyncio')
+                    
+                    if 'sqlalchemy' in requirements_lower:
+                        tools.setdefault('orm', []).append('sqlalchemy')
+                    elif 'tortoise-orm' in requirements_lower:
+                        tools.setdefault('orm', []).append('tortoise-orm')
+                    
+                    if 'pydantic' in requirements_lower:
+                        tools.setdefault('validation', []).append('pydantic')
+                    
+                    if 'alembic' in requirements_lower:
+                        tools.setdefault('migration', []).append('alembic')
+                    
+                    # Database drivers
+                    if 'psycopg2' in requirements_lower or 'asyncpg' in requirements_lower:
+                        tools.setdefault('database', []).append('postgresql')
+                    if 'pymysql' in requirements_lower or 'aiomysql' in requirements_lower:
+                        tools.setdefault('database', []).append('mysql')
+                    if 'motor' in requirements_lower:
+                        tools.setdefault('database', []).append('mongodb')
+                        
+            except UnicodeDecodeError:
+                pass
+
+        # Check pyproject.toml
+        pyproject_file = self.project_path / "pyproject.toml"
+        if pyproject_file.exists():
+            try:
+                with open(pyproject_file, 'r', encoding='utf-8') as f:
+                    content = f.read().lower()
+                    if 'fastapi' in content:
+                        confidence += 0.5
+                        indicators.append("'fastapi' in pyproject.toml: +0.5")
             except UnicodeDecodeError:
                 pass
 
         # Check for Python files with fastapi imports
         python_files = list(self.project_path.glob("*.py"))
-        python_files.extend(self.project_path.glob("**/*.py"))
+        python_files.extend(list(self.project_path.glob("app/**/*.py")))
+        python_files.extend(list(self.project_path.glob("src/**/*.py")))
 
-        for py_file in python_files[:10]:  # Check first 10 files
+        fastapi_patterns = [
+            'from fastapi import',
+            'import fastapi',
+            'FastAPI(',
+            'APIRouter(',
+            '@app.get',
+            '@app.post',
+            '@router.get',
+            '@router.post'
+        ]
+
+        for py_file in python_files[:20]:  # Check first 20 files
+            if 'venv' in str(py_file) or '.venv' in str(py_file):
+                continue
+                
             try:
                 with open(py_file, 'r', encoding='utf-8') as f:
                     content = f.read()
-                    if 'from fastapi import' in content or 'import fastapi' in content:
-                        confidence += 0.3
-                        indicators.append(f"FastAPI import in {py_file.name}: +0.3")
-                        break
+                    
+                    for pattern in fastapi_patterns:
+                        if pattern in content:
+                            confidence += 0.15
+                            indicators.append(f"FastAPI pattern '{pattern}' in {py_file.name}: +0.15")
+                            break
+                            
             except (UnicodeDecodeError, PermissionError):
                 continue
 
+        # Check for main.py or app.py (common entry points)
+        entry_points = [
+            self.project_path / "main.py",
+            self.project_path / "app.py",
+            self.project_path / "app" / "main.py"
+        ]
+        
+        for entry_point in entry_points:
+            if entry_point.exists():
+                try:
+                    with open(entry_point, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        if 'FastAPI(' in content or 'from fastapi import FastAPI' in content:
+                            confidence += 0.1
+                            indicators.append(f"{entry_point.name} with FastAPI app: +0.1")
+                            break
+                except (UnicodeDecodeError, PermissionError):
+                    pass
+
+        # Minimum confidence threshold
         if confidence < 0.5:
             return None
 
+        # Determine recommended subagents
+        recommended_subagents = ['api-developer', 'api-tester']
+        
+        if 'pytest' in tools.get('testing', []):
+            recommended_subagents.append('pytest-specialist')
+        
+        if tools.get('orm'):
+            if 'sqlalchemy' in tools['orm']:
+                recommended_subagents.append('sqlalchemy-specialist')
+            elif 'tortoise-orm' in tools['orm']:
+                recommended_subagents.append('orm-specialist')
+        
+        if 'pydantic' in tools.get('validation', []):
+            recommended_subagents.append('pydantic-specialist')
+        
+        if tools.get('database'):
+            if 'postgresql' in tools['database']:
+                recommended_subagents.append('postgresql-specialist')
+            elif 'mysql' in tools['database']:
+                recommended_subagents.append('mysql-specialist')
+            elif 'mongodb' in tools['database']:
+                recommended_subagents.append('mongodb-specialist')
+
+        # Project structure
+        project_structure = {
+            'has_requirements_txt': requirements_file.exists(),
+            'has_pyproject_toml': pyproject_file.exists(),
+            'has_app_directory': (self.project_path / 'app').exists(),
+            'has_tests': (self.project_path / 'tests').exists() or (self.project_path / 'test').exists()
+        }
+
         return DetectionResult(
             framework="fastapi",
+            version=version,
             language="python",
             confidence=min(confidence, 1.0),
             indicators=indicators,
-            tools={},
-            recommended_subagents=['fastapi-tester', 'api-reviewer', 'async-checker'],
-            project_structure={}
+            tools=tools,
+            recommended_subagents=recommended_subagents,
+            project_structure=project_structure
         )
 
     def _detect_django(self) -> Optional[DetectionResult]:
@@ -461,6 +599,625 @@ class TechStackDetector:
             tools={},
             recommended_subagents=['flutter-tester', 'widget-reviewer'],
             project_structure={}
+        )
+
+    def _detect_vanilla_php_web(self) -> Optional[DetectionResult]:
+        """
+        Detect vanilla PHP/JavaScript web applications.
+        
+        Identifies custom PHP applications without major frameworks
+        (Laravel, Symfony, CodeIgniter, CakePHP).
+        
+        Detection criteria:
+        - composer.json WITHOUT major framework dependencies
+        - Multiple root-level *.php files
+        - Custom routing (index.php with FastRoute or manual routing)
+        - Custom MVC structure (src/app/ or app/)
+        - .htaccess with custom rewrite rules
+        - Testing tools: Playwright, Codeception, PHPUnit
+        
+        Returns:
+            DetectionResult if PHP web app detected, None otherwise
+        """
+        indicators = []
+        confidence = 0.0
+        tools = {}
+        version = None
+        language = "php"
+        
+        # Check for composer.json
+        composer_file = self.project_path / "composer.json"
+        if not composer_file.exists():
+            # No composer - check for raw PHP files
+            root_php_files = list(self.project_path.glob("*.php"))
+            if len(root_php_files) >= 3:
+                # Likely a very simple PHP project
+                confidence += 0.3
+                indicators.append(f"{len(root_php_files)} root-level PHP files (no Composer)")
+            else:
+                return None
+        else:
+            indicators.append("composer.json exists: +0.1")
+            confidence += 0.1
+            
+            try:
+                composer_data = json.load(open(composer_file))
+                requires = composer_data.get('require', {})
+                
+                # NEGATIVE CHECK: Major frameworks (immediately disqualify)
+                framework_packages = {
+                    'laravel/framework': 'Laravel',
+                    'symfony/framework-bundle': 'Symfony',
+                    'codeigniter4/framework': 'CodeIgniter',
+                    'cakephp/cakephp': 'CakePHP',
+                    'yiisoft/yii2': 'Yii2'
+                }
+                
+                for pkg, fw_name in framework_packages.items():
+                    if pkg in requires or pkg in composer_data.get('require-dev', {}):
+                        logger.info(f"Found {fw_name} package - not vanilla PHP")
+                        return None
+                
+                # POSITIVE: PHP version requirement
+                if 'php' in requires:
+                    php_version = requires['php'].lstrip('^~>=<')
+                    version = php_version
+                    indicators.append(f"PHP {php_version} required: +0.1")
+                    confidence += 0.1
+                
+                # BONUS: Minimal dependencies (indicates custom app)
+                total_deps = len(requires) + len(composer_data.get('require-dev', {}))
+                if total_deps < 10:
+                    indicators.append(f"minimal dependencies ({total_deps}): +0.1")
+                    confidence += 0.1
+                elif total_deps < 20:
+                    indicators.append(f"moderate dependencies ({total_deps}): +0.05")
+                    confidence += 0.05
+                    
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Could not parse composer.json: {e}")
+                return None
+        
+        # Check for root-level PHP files
+        root_php_files = list(self.project_path.glob("*.php"))
+        num_root_php = len(root_php_files)
+        
+        if num_root_php >= 10:
+            indicators.append(f"{num_root_php} root-level PHP files: +0.2")
+            confidence += 0.2
+        elif num_root_php >= 5:
+            indicators.append(f"{num_root_php} root-level PHP files: +0.15")
+            confidence += 0.15
+        elif num_root_php >= 3:
+            indicators.append(f"{num_root_php} root-level PHP files: +0.1")
+            confidence += 0.1
+        else:
+            # Too few PHP files
+            return None
+        
+        # Check for index.php with routing logic
+        index_php = self.project_path / "index.php"
+        if index_php.exists():
+            try:
+                content = index_php.read_text(encoding='utf-8', errors='ignore')
+                routing_indicators = ['FastRoute', 'Dispatcher', 'REQUEST_URI', '$_SERVER', 'routes']
+                
+                found_routing = [r for r in routing_indicators if r in content]
+                if found_routing:
+                    indicators.append(f"index.php with custom routing ({', '.join(found_routing)}): +0.15")
+                    confidence += 0.15
+                else:
+                    indicators.append("index.php exists: +0.05")
+                    confidence += 0.05
+            except IOError:
+                pass
+        
+        # Check for custom MVC structure
+        mvc_structures = [
+            self.project_path / "src" / "app",
+            self.project_path / "app",
+            self.project_path / "application"
+        ]
+        
+        for mvc_dir in mvc_structures:
+            if mvc_dir.exists():
+                has_controllers = (mvc_dir / "Controllers").exists() or (mvc_dir / "controllers").exists()
+                has_views = (mvc_dir / "Views").exists() or (mvc_dir / "views").exists()
+                has_models = (
+                    (mvc_dir / "Models").exists() or 
+                    (mvc_dir / "models").exists() or
+                    (mvc_dir / "Repositories").exists()
+                )
+                
+                if has_controllers and has_views:
+                    indicators.append("custom MVC structure: +0.15")
+                    confidence += 0.15
+                    break
+                elif has_controllers or has_views:
+                    indicators.append("partial MVC structure: +0.05")
+                    confidence += 0.05
+                    break
+        
+        # Check for .htaccess with custom rules
+        htaccess = self.project_path / ".htaccess"
+        if htaccess.exists():
+            try:
+                content = htaccess.read_text(encoding='utf-8', errors='ignore')
+                if 'RewriteEngine' in content and 'index.php' in content:
+                    indicators.append(".htaccess with custom rewrite rules: +0.05")
+                    confidence += 0.05
+            except IOError:
+                pass
+        
+        # Check for custom bootstrap.php
+        for bootstrap_file in self.project_path.rglob("bootstrap.php"):
+            if 'vendor' not in str(bootstrap_file):
+                try:
+                    content = bootstrap_file.read_text(encoding='utf-8', errors='ignore')
+                    if 'require' in content and ('config' in content or 'autoload' in content):
+                        indicators.append("custom bootstrap.php: +0.05")
+                        confidence += 0.05
+                        break
+                except IOError:
+                    pass
+        
+        # Detect language (PHP vs PHP + TypeScript)
+        if (self.project_path / "tsconfig.json").exists():
+            language = "php-typescript"
+        elif list(self.project_path.glob("**/*.ts")):
+            language = "php-typescript"
+        
+        # Testing frameworks detection
+        testing_frameworks = []
+        
+        # Playwright
+        if (self.project_path / "playwright.config.js").exists() or \
+           (self.project_path / "playwright.config.ts").exists():
+            testing_frameworks.append("playwright")
+            indicators.append("Playwright E2E testing: +0.05")
+            confidence += 0.05
+        
+        # Codeception
+        if (self.project_path / "codeception.yml").exists():
+            testing_frameworks.append("codeception")
+            indicators.append("Codeception testing: +0.05")
+            confidence += 0.05
+        
+        # PHPUnit
+        phpunit_configs = [
+            self.project_path / "phpunit.xml",
+            self.project_path / "phpunit.xml.dist"
+        ]
+        for phpunit_config in phpunit_configs:
+            if phpunit_config.exists():
+                testing_frameworks.append("phpunit")
+                indicators.append("PHPUnit testing: +0.05")
+                confidence += 0.05
+                break
+        
+        if testing_frameworks:
+            tools['testing'] = testing_frameworks
+        
+        # Database detection
+        env_file = self.project_path / ".env"
+        if env_file.exists():
+            try:
+                env_content = env_file.read_text(encoding='utf-8', errors='ignore')
+                if 'DB_HOST' in env_content or 'DATABASE_URL' in env_content:
+                    if 'mysql' in env_content.lower():
+                        tools['database'] = ['mysql']
+                    elif 'postgres' in env_content.lower():
+                        tools['database'] = ['postgresql']
+                    elif 'sqlite' in env_content.lower():
+                        tools['database'] = ['sqlite']
+            except IOError:
+                pass
+        
+        # Frontend detection
+        package_json = self.project_path / "package.json"
+        if package_json.exists():
+            try:
+                pkg_data = json.load(open(package_json))
+                deps = {**pkg_data.get('dependencies', {}), **pkg_data.get('devDependencies', {})}
+                
+                # Check for modern JS frameworks (disqualifies as "vanilla")
+                modern_frameworks = ['react', 'vue', '@vue/cli', 'angular', '@angular/core', 'next', 'nuxt', 'svelte']
+                if any(fw in deps for fw in modern_frameworks):
+                    # Has modern framework - reduce confidence slightly
+                    confidence -= 0.1
+                    indicators.append("modern JS framework detected: -0.1")
+                else:
+                    tools['frontend'] = ['vanilla-js']
+            except (json.JSONDecodeError, IOError):
+                pass
+        else:
+            tools['frontend'] = ['vanilla-js']
+        
+        # Docker detection
+        if (self.project_path / "docker-compose.yml").exists() or \
+           (self.project_path / "Dockerfile").exists():
+            tools['containerization'] = ['docker']
+        
+        # Minimum confidence threshold
+        if confidence < 0.3:
+            return None
+        
+        # Recommended subagents based on detected components
+        recommended_subagents = ['php-developer']
+        
+        if 'playwright' in testing_frameworks:
+            recommended_subagents.append('playwright-tester')
+        if 'codeception' in testing_frameworks:
+            recommended_subagents.append('codeception-tester')
+        if 'phpunit' in testing_frameworks:
+            recommended_subagents.append('phpunit-tester')
+        
+        if tools.get('frontend') == ['vanilla-js']:
+            recommended_subagents.append('vanilla-js-developer')
+        
+        if 'mysql' in tools.get('database', []):
+            recommended_subagents.append('mysql-specialist')
+        elif 'postgresql' in tools.get('database', []):
+            recommended_subagents.append('postgresql-specialist')
+        
+        if 'docker' in tools.get('containerization', []):
+            recommended_subagents.append('docker-specialist')
+        
+        # Project structure information
+        project_structure = {
+            'has_composer': composer_file.exists(),
+            'has_mvc_structure': any((mvc_dir.exists() for mvc_dir in mvc_structures)),
+            'has_htaccess': htaccess.exists(),
+            'has_docker': 'docker' in tools.get('containerization', []),
+            'root_php_files': num_root_php
+        }
+        
+        return DetectionResult(
+            framework="vanilla-php-web",
+            version=version,
+            language=language,
+            confidence=min(1.0, confidence),  # Cap at 1.0
+            indicators=indicators,
+            tools=tools,
+            recommended_subagents=recommended_subagents,
+            project_structure=project_structure
+        )
+
+    def _detect_python_ml(self) -> Optional[DetectionResult]:
+        """
+        Detect Python ML/Data Science/Image Processing projects.
+        
+        Detection criteria:
+        - requirements.txt or environment.yml with ML libraries
+        - Python files with ML/CV imports (numpy, pandas, sklearn, torch, tensorflow, opencv)
+        - Jupyter notebooks (.ipynb files)
+        - Common ML project structure (data/, models/, notebooks/)
+        
+        Returns:
+            DetectionResult if Python ML project detected, None otherwise
+        """
+        # Check for Python project files
+        has_requirements = (self.project_path / "requirements.txt").exists()
+        has_pyproject = (self.project_path / "pyproject.toml").exists()
+        has_conda_env = (self.project_path / "environment.yml").exists()
+        
+        if not (has_requirements or has_pyproject or has_conda_env):
+            return None
+
+        confidence = 0.0
+        indicators = []
+        tools = {}
+        ml_type = None  # 'general-ml', 'deep-learning', 'computer-vision', 'nlp'
+        
+        # ML/DS library keywords with categories
+        ml_libraries = {
+            'general': ['numpy', 'pandas', 'scikit-learn', 'sklearn', 'scipy', 'matplotlib', 'seaborn'],
+            'deep-learning': ['tensorflow', 'keras', 'torch', 'pytorch', 'jax', 'mxnet'],
+            'computer-vision': ['opencv', 'cv2', 'pillow', 'pil', 'scikit-image', 'skimage', 'albumentations'],
+            'nlp': ['nltk', 'spacy', 'transformers', 'huggingface', 'gensim', 'wordcloud'],
+            'tools': ['jupyter', 'notebook', 'jupyterlab', 'mlflow', 'wandb', 'tensorboard']
+        }
+        
+        detected_categories = {cat: [] for cat in ml_libraries.keys()}
+        
+        # Check requirements.txt
+        requirements_file = self.project_path / "requirements.txt"
+        if requirements_file.exists():
+            try:
+                with open(requirements_file, 'r', encoding='utf-8') as f:
+                    requirements = f.read().lower()
+                    
+                    for category, libs in ml_libraries.items():
+                        for lib in libs:
+                            if lib in requirements:
+                                detected_categories[category].append(lib)
+                                
+            except UnicodeDecodeError:
+                pass
+        
+        # Check environment.yml
+        env_file = self.project_path / "environment.yml"
+        if env_file.exists():
+            try:
+                with open(env_file, 'r', encoding='utf-8') as f:
+                    env_content = f.read().lower()
+                    
+                    for category, libs in ml_libraries.items():
+                        for lib in libs:
+                            if lib in env_content:
+                                detected_categories[category].append(lib)
+                                
+            except UnicodeDecodeError:
+                pass
+        
+        # Calculate confidence based on detected libraries
+        if detected_categories['general']:
+            confidence += 0.3
+            indicators.append(f"General ML libraries: {', '.join(set(detected_categories['general']))}: +0.3")
+            tools['ml-general'] = list(set(detected_categories['general']))
+        
+        if detected_categories['deep-learning']:
+            confidence += 0.25
+            indicators.append(f"Deep learning libraries: {', '.join(set(detected_categories['deep-learning']))}: +0.25")
+            tools['deep-learning'] = list(set(detected_categories['deep-learning']))
+            ml_type = 'deep-learning'
+        
+        if detected_categories['computer-vision']:
+            confidence += 0.2
+            indicators.append(f"Computer vision libraries: {', '.join(set(detected_categories['computer-vision']))}: +0.2")
+            tools['computer-vision'] = list(set(detected_categories['computer-vision']))
+            if not ml_type:
+                ml_type = 'computer-vision'
+        
+        if detected_categories['nlp']:
+            confidence += 0.2
+            indicators.append(f"NLP libraries: {', '.join(set(detected_categories['nlp']))}: +0.2")
+            tools['nlp'] = list(set(detected_categories['nlp']))
+            if not ml_type:
+                ml_type = 'nlp'
+        
+        if detected_categories['tools']:
+            tools['ml-tools'] = list(set(detected_categories['tools']))
+        
+        # If no ML type determined yet, set as general
+        if not ml_type and detected_categories['general']:
+            ml_type = 'general-ml'
+        
+        # Check for Jupyter notebooks
+        notebooks = list(self.project_path.glob("*.ipynb"))
+        notebooks.extend(list(self.project_path.glob("notebooks/**/*.ipynb")))
+        notebooks.extend(list(self.project_path.glob("**/*.ipynb")))
+        
+        num_notebooks = len([nb for nb in notebooks if '.ipynb_checkpoints' not in str(nb)])
+        
+        if num_notebooks > 0:
+            confidence += 0.15
+            indicators.append(f"{num_notebooks} Jupyter notebooks: +0.15")
+            tools.setdefault('ml-tools', []).append('jupyter')
+        
+        # Check for Python files with ML imports
+        python_files = list(self.project_path.glob("*.py"))
+        python_files.extend(list(self.project_path.glob("src/**/*.py")))
+        python_files.extend(list(self.project_path.glob("scripts/**/*.py")))
+        
+        ml_import_patterns = [
+            'import numpy',
+            'import pandas',
+            'import torch',
+            'import tensorflow',
+            'from sklearn',
+            'import cv2',
+            'from PIL import'
+        ]
+        
+        for py_file in python_files[:15]:
+            if 'venv' in str(py_file) or '.venv' in str(py_file):
+                continue
+                
+            try:
+                with open(py_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                    for pattern in ml_import_patterns:
+                        if pattern in content:
+                            confidence += 0.05
+                            indicators.append(f"ML import '{pattern}' in {py_file.name}: +0.05")
+                            break
+                            
+            except (UnicodeDecodeError, PermissionError):
+                continue
+        
+        # Check for common ML project directories
+        ml_directories = {
+            'data': self.project_path / 'data',
+            'datasets': self.project_path / 'datasets',
+            'models': self.project_path / 'models',
+            'notebooks': self.project_path / 'notebooks',
+            'experiments': self.project_path / 'experiments',
+            'checkpoints': self.project_path / 'checkpoints'
+        }
+        
+        found_dirs = [name for name, path in ml_directories.items() if path.exists()]
+        if found_dirs:
+            confidence += 0.1
+            indicators.append(f"ML project directories: {', '.join(found_dirs)}: +0.1")
+        
+        # Minimum confidence threshold
+        if confidence < 0.3:
+            return None
+        
+        # Determine recommended subagents
+        recommended_subagents = ['python-ml-developer']
+        
+        if 'jupyter' in tools.get('ml-tools', []):
+            recommended_subagents.append('notebook-specialist')
+        
+        if tools.get('deep-learning'):
+            if 'torch' in tools['deep-learning'] or 'pytorch' in tools['deep-learning']:
+                recommended_subagents.append('pytorch-specialist')
+            if 'tensorflow' in tools['deep-learning']:
+                recommended_subagents.append('tensorflow-specialist')
+        
+        if tools.get('computer-vision'):
+            recommended_subagents.append('cv-specialist')
+        
+        if tools.get('nlp'):
+            recommended_subagents.append('nlp-specialist')
+        
+        if 'pandas' in tools.get('ml-general', []):
+            recommended_subagents.append('data-analyst')
+        
+        # Project structure
+        project_structure = {
+            'has_notebooks': num_notebooks > 0,
+            'has_data_dir': (self.project_path / 'data').exists(),
+            'has_models_dir': (self.project_path / 'models').exists(),
+            'has_conda_env': has_conda_env,
+            'ml_type': ml_type
+        }
+        
+        return DetectionResult(
+            framework="python-ml",
+            version=None,
+            language="python",
+            confidence=min(confidence, 1.0),
+            indicators=indicators,
+            tools=tools,
+            recommended_subagents=recommended_subagents,
+            project_structure=project_structure
+        )
+
+    def _detect_ios_swift(self) -> Optional[DetectionResult]:
+        """
+        Detect iOS Swift projects.
+        
+        Detection criteria:
+        - Xcode project files (.xcodeproj, .xcworkspace)
+        - Swift source files (.swift)
+        - Info.plist, Podfile, Package.swift
+        - Common iOS frameworks (UIKit, SwiftUI)
+        
+        Returns:
+            DetectionResult if iOS Swift project detected, None otherwise
+        """
+        confidence = 0.0
+        indicators = []
+        tools = {}
+        ui_framework = None
+        
+        # Check for Xcode project files
+        xcodeproj = list(self.project_path.glob("*.xcodeproj"))
+        xcworkspace = list(self.project_path.glob("*.xcworkspace"))
+        
+        if xcodeproj:
+            confidence += 0.4
+            indicators.append(f".xcodeproj found: +0.4")
+        
+        if xcworkspace:
+            confidence += 0.2
+            indicators.append(f".xcworkspace found: +0.2")
+        
+        if not xcodeproj and not xcworkspace:
+            return None
+        
+        # Check for Swift files
+        swift_files = list(self.project_path.glob("**/*.swift"))
+        swift_files = [f for f in swift_files if 'Pods' not in str(f) and '.build' not in str(f)]
+        
+        num_swift_files = len(swift_files)
+        if num_swift_files > 0:
+            confidence += 0.3
+            indicators.append(f"{num_swift_files} Swift files: +0.3")
+        else:
+            # Might be Objective-C project
+            return None
+        
+        # Check for SwiftUI vs UIKit
+        swiftui_patterns = ['import SwiftUI', 'struct.*: View', '@State', '@Binding', '@ObservedObject']
+        uikit_patterns = ['import UIKit', 'class.*: UIViewController', 'UIView', 'UITableView']
+        
+        swiftui_count = 0
+        uikit_count = 0
+        
+        for swift_file in swift_files[:20]:  # Check first 20 files
+            try:
+                content = swift_file.read_text(encoding='utf-8', errors='ignore')
+                
+                if any(pattern in content for pattern in swiftui_patterns):
+                    swiftui_count += 1
+                if any(pattern in content for pattern in uikit_patterns):
+                    uikit_count += 1
+                    
+            except (IOError, PermissionError):
+                continue
+        
+        if swiftui_count > uikit_count:
+            ui_framework = 'swiftui'
+            tools['ui-framework'] = ['swiftui']
+            indicators.append(f"SwiftUI detected in {swiftui_count} files")
+        elif uikit_count > 0:
+            ui_framework = 'uikit'
+            tools['ui-framework'] = ['uikit']
+            indicators.append(f"UIKit detected in {uikit_count} files")
+        
+        # Check for CocoaPods
+        if (self.project_path / "Podfile").exists():
+            tools['dependency-manager'] = ['cocoapods']
+            confidence += 0.05
+            indicators.append("CocoaPods (Podfile): +0.05")
+        
+        # Check for Swift Package Manager
+        if (self.project_path / "Package.swift").exists():
+            tools.setdefault('dependency-manager', []).append('spm')
+            confidence += 0.05
+            indicators.append("Swift Package Manager: +0.05")
+        
+        # Check for Info.plist
+        info_plist = list(self.project_path.glob("**/Info.plist"))
+        if info_plist:
+            confidence += 0.05
+            indicators.append("Info.plist found: +0.05")
+        
+        # Check for testing frameworks
+        if any('Test' in str(f) or 'Spec' in str(f) for f in swift_files):
+            tools['testing'] = ['xctest']
+        
+        # Detect app type
+        app_type = 'ios-app'
+        
+        # Minimum confidence threshold
+        if confidence < 0.5:
+            return None
+        
+        # Recommended subagents
+        recommended_subagents = ['swift-developer']
+        
+        if ui_framework == 'swiftui':
+            recommended_subagents.append('swiftui-specialist')
+        elif ui_framework == 'uikit':
+            recommended_subagents.append('uikit-specialist')
+        
+        if 'xctest' in tools.get('testing', []):
+            recommended_subagents.append('xctest-specialist')
+        
+        # Project structure
+        project_structure = {
+            'has_xcodeproj': len(xcodeproj) > 0,
+            'has_xcworkspace': len(xcworkspace) > 0,
+            'swift_files_count': num_swift_files,
+            'ui_framework': ui_framework,
+            'app_type': app_type
+        }
+        
+        return DetectionResult(
+            framework="ios-swift",
+            version=None,
+            language="swift",
+            confidence=min(confidence, 1.0),
+            indicators=indicators,
+            tools=tools,
+            recommended_subagents=recommended_subagents,
+            project_structure=project_structure
         )
 
 

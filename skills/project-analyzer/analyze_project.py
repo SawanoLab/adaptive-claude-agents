@@ -186,18 +186,27 @@ class ProjectAnalyzer:
         # Copy/generate templates
         generated_count = 0
         for agent_name in detection.recommended_subagents:
+            # Direct template file mapping (exact match first)
             template_file = templates_dir / f"{agent_name}.md"
-
-            # For Phase 1, we only have tester.md
-            # Map agent names to available templates
-            if agent_name.endswith("-tester"):
-                template_file = templates_dir / "tester.md"
-            elif agent_name.endswith("-reviewer"):
-                template_file = templates_dir / "reviewer.md"
-            else:
-                # Template not available yet
-                logger.debug(f"Template not found: {template_file}")
-                continue
+            
+            # If exact match doesn't exist, try suffix-based mapping
+            if not template_file.exists():
+                if agent_name.endswith("-tester"):
+                    # Try tester.md as fallback
+                    template_file = templates_dir / "tester.md"
+                elif agent_name.endswith("-reviewer"):
+                    # Try reviewer.md as fallback
+                    template_file = templates_dir / "reviewer.md"
+                elif agent_name.endswith("-developer"):
+                    # Try developer.md as fallback
+                    template_file = templates_dir / "developer.md"
+                elif agent_name.endswith("-specialist"):
+                    # Try specialist.md as fallback
+                    template_file = templates_dir / "specialist.md"
+                else:
+                    # Template not available
+                    logger.debug(f"Template not found: {agent_name}.md")
+                    continue
 
             if template_file.exists():
                 output_file = self.agents_dir / f"{agent_name}.md"
