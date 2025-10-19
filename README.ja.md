@@ -1,257 +1,255 @@
 # Adaptive Claude Agents
 
-> **🚧 ステータス**: Phase 3 完了！🎉
-> コア検出 + 10フレームワーク対応完了。コア検出 + 10フレームワーク + 適応的レビュー濃度！ベータテスト準備完了。
+> **ステータス**: ベータテスト中 🚀
+>
+> プロジェクト固有のClaude Codeサブエージェントを自動生成し、開発フェーズに応じて動作を適応させます。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Development Status](https://img.shields.io/badge/status-pre--alpha-red)](https://github.com/SawanoLab/adaptive-claude-agents)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-[English README](./README.md)
-
-プロジェクト固有の**Claude Codeサブエージェントを自動生成**し、**開発フェーズ**に応じて振る舞いを調整します。
+[English README](./README.md) | [ドキュメント](./docs/) | [使用例](./docs/EXAMPLES.md) | [トラブルシューティング](./docs/TROUBLESHOOTING.md)
 
 ---
 
-## 🎯 これは何？
+## これは何？
 
-### 解決する課題
+**Adaptive Claude Agents** は、プロジェクトに最適化されたClaude Codeサブエージェントを自動生成し、開発フェーズに応じてコードレビューの厳格度を調整するツールです。
 
-Claude Codeで新規プロジェクトを始めるのは面倒です：
+### 2つの革新的機能
 
-- 技術スタックごとに手動でサブエージェントを作成
-- プロトタイプと本番コードで同じ厳格なレビュー
-- プロジェクトの成熟に伴うエージェントの再設定
+#### 1. 🔍 自動検出＆サブエージェント生成
 
-### 解決策
-
-**Adaptive Claude Agents**は2つの革新的な機能でこれを解決：
-
-#### 1. 🔍 自動検出と生成
-
-プロジェクト構造を分析し、適切なサブエージェントを自動生成：
+プロジェクトを分析して適切なサブエージェントを生成：
 
 ```bash
-# 検出: Next.js + TypeScript + Tailwind CSS
-→ 生成: nextjs-tester, component-reviewer, type-checker
+検出: Next.js 14 + TypeScript + Vitest
+→ 生成: nextjs-tester
 
-# 検出: FastAPI + PostgreSQL + pytest
-→ 生成: fastapi-tester, api-reviewer, db-schema-checker
+検出: FastAPI + SQLAlchemy + pytest
+→ 生成: api-developer, api-tester, sqlalchemy-specialist
 ```
 
-**グローバルClaude Skills**として統合 - すべてのプロジェクトで動作！
+**対応フレームワーク** (10種類): Next.js, React, Vue, FastAPI, Django, Flask, バニラPHP/Web, Python ML/CV, iOS Swift, Go, Flutter
 
-#### 2. 📊 フェーズ適応型レビュー濃度 ⭐ **新規アプローチ**
+#### 2. 📊 フェーズ適応レビュー ⭐ **業界初**
 
-**伝統的なQA原則をAIエージェントに適用した初のツール：**
+開発フェーズに応じてレビュー基準を自動調整：
 
-| フェーズ | レビュー焦点 | チェック内容 | 例 |
-|---------|------------|------------|-----|
-| **プロトタイプ** | "動く？" | 基本機能のみ | パフォーマンス、スタイルは無視 |
-| **MVP** | "安全？" | 一般的な脆弱性 | 基本的なセキュリティ監査 |
-| **本番** | "完璧？" | すべて | 完全な監査 + 最適化 |
+| フェーズ | レビュー厳格度 | 重点 |
+|---------|--------------|------|
+| **プロトタイプ** | 軽い (3/10) | 「動くか？」 |
+| **MVP** | 中程度 (6/10) | 「安全か？」 |
+| **本番** | 厳格 (10/10) | 「完璧か？」 |
 
-コードベースの開発フェーズマーカーに基づいて自動調整します。
-
----
-
-## ✨ 主な機能
-
-- ✅ **ゼロコンフィグ**: すぐに動作
-- ✅ **技術スタック非依存**: 10フレームワーク対応（Next.js、FastAPI、バニラPHP、Python ML、iOS Swiftなど）
-- ✅ **フェーズ対応**: レビュー濃度を自動調整
-- ✅ **グローバルSkills**: 一度の設定で全プロジェクトで利用可能
-- ✅ **コミュニティテンプレート**: 新しい技術スタックの追加が容易
-- ✅ **Progressive Disclosure**: Anthropicのベストプラクティスに準拠
+GitHub Copilot、Cursor等の他のAIコーディングツールにはない機能です。
 
 ---
 
 ## 🚀 クイックスタート
 
-> **注意**: Phase 1リリースで提供予定
-
-### インストール（予定）
+### インストール
 
 ```bash
-# グローバルClaude Skillとしてインストール
+# ワンコマンドインストール
 curl -fsSL https://raw.githubusercontent.com/SawanoLab/adaptive-claude-agents/main/install.sh | bash
 ```
 
-### 使い方（予定）
+または手動インストール：
 
-1. Claude Codeでプロジェクトを開く
-2. Skillが技術スタックを自動検出
-3. サブエージェント生成前に確認
-4. 最適化されたエージェントでコーディング開始！
-
-```
-検出: Next.js + TypeScript + Tailwind CSS
-以下のサブエージェントを生成しますか？
-  - nextjs-tester (Vitest + Testing Library)
-  - component-reviewer (React ベストプラクティス)
-  - type-checker (TypeScript strict mode)
-[Y/n]
+```bash
+git clone https://github.com/SawanoLab/adaptive-claude-agents.git
+cd adaptive-claude-agents
+./install.sh
 ```
 
----
+### 使い方
 
-## 📁 プロジェクト構造
+Claude Codeで以下のように尋ねるだけ：
 
-```
-adaptive-claude-agents/
-├── skills/                 # Claude Skills実装
-│   ├── project-analyzer/   # 自動検出ロジック
-│   └── adaptive-review/    # フェーズ対応レビュー
-├── templates/              # サブエージェントテンプレート
-│   ├── nextjs/
-│   ├── fastapi/
-│   ├── react-native/
-│   └── go/
-├── examples/               # 使用例
-└── docs/                   # ドキュメント
+```text
+> "このプロジェクトを分析して適切なサブエージェントを生成して"
 ```
 
----
+または直接実行：
 
-## 🛣️ ロードマップ
+```bash
+python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py .
+```
 
-- [x] プロジェクト構想と計画
-- [x] **Phase 1**: 基本プロジェクト分析器 ✅
-  - [x] 技術スタック検出
-  - [x] Next.jsテンプレート
-  - [x] 基本的なサブエージェント生成
-- [x] **Phase 2**: 複数の技術スタック（2週間）✅
-  - [x] FastAPI、バニラPHP、Python ML、iOS Swiftテンプレート
-  - [x] 検出精度の向上
-  - [x] 10フレームワーク、13テンプレート実装完了
-- [x] **Phase 3**: 適応的レビュー濃度 ✅ **🌟 独自機能**
-  - [x] 7シグナルフェーズ検出（ユーザー設定、バージョン、git、テスト、CI/CD、ドキュメント、構造）
-  - [x] フェーズ設定（prototype.yaml、mvp.yaml、production.yaml）
-  - [x] プロジェクト成熟度に基づく適応的レビュー基準
-  - [x] 実プロジェクトでテスト済み（adaptive-claude-agents: prototype、c-campus: production）
-- [x] **Phase 3**: 適応的レビュー濃度 ✅ **🌟 独自機能**
-  - [x] 7シグナルフェーズ検出（ユーザー設定、バージョン、git、テスト、CI/CD、ドキュメント、構造）
-  - [x] フェーズ設定（prototype.yaml、mvp.yaml、production.yaml）
-  - [x] プロジェクト成熟度に基づく適応的レビュー基準
-  - [x] 実プロジェクトでテスト済み（adaptive-claude-agents: prototype、c-campus: production）
-- [x] **Phase 3**: 適応的レビュー濃度 ✅ **🌟 独自機能**
-  - [x] 7シグナルフェーズ検出（ユーザー設定、バージョン、git、テスト、CI/CD、ドキュメント、構造）
-  - [x] フェーズ設定（prototype.yaml、mvp.yaml、production.yaml）
-  - [x] プロジェクト成熟度に基づく適応的レビュー基準
-  - [x] 実プロジェクトでテスト済み（adaptive-claude-agents: prototype、c-campus: production）
-- [x] **Phase 3**: 適応的レビュー濃度 ✅ **🌟 独自機能**
-  - [x] 7シグナルフェーズ検出（ユーザー設定、バージョン、git、テスト、CI/CD、ドキュメント、構造）
-  - [x] フェーズ設定（prototype.yaml、mvp.yaml、production.yaml）
-  - [x] プロジェクト成熟度に基づく適応的レビュー基準
-  - [x] 実プロジェクトでテスト済み（adaptive-claude-agents: prototype、c-campus: production）
-
-詳細な進捗は[内部プロジェクトボード](https://github.com/SawanoLab/adaptive-claude-agents/projects)をご覧ください。
-
----
-
-## 📦 対応フレームワーク（Phase 2）
-
-| フレームワーク | テンプレート | ステータス |
-|--------------|------------|----------|
-| **Next.js** | tester | ✅ Phase 1 |
-| **バニラPHP/Web** | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ Phase 2 |
-| **FastAPI** | api-developer, api-tester, sqlalchemy-specialist | ✅ Phase 2 |
-| **Python ML/CV** | python-ml-developer, cv-specialist | ✅ Phase 2 |
-| **iOS Swift** | swift-developer | ✅ Phase 2 |
-| **React** | 基本検出のみ | 🚧 Phase 1 |
-| **Vue** | 基本検出のみ | 🚧 Phase 1 |
-| **Django** | 基本検出のみ | 🚧 Phase 1 |
-| **Flask** | 基本検出のみ | 🚧 Phase 1 |
-| **Flutter** | 基本検出のみ | 🚧 Phase 1 |
-
-**合計**: 10フレームワーク検出、13専門テンプレート
-
----
-
-## 🆚 既存ツールとの違い
-
-| 機能 | [claude-init](https://github.com/dimitritholen/claude-init) | **Adaptive Claude Agents** |
-|------|-------------|---------------------------|
-| **実行タイミング** | 初期セットアップのみ | 継続的（Skillsベース） |
-| **フェーズ適応** | ❌ なし | ✅ **独自機能** |
-| **更新** | プロジェクト開始時のみ | 継続的 |
-| **統合方法** | CLIツール | Claude Skills |
-| **技術スタック検出** | 手動 | 自動 |
-
-**補完的ツール**: 初期セットアップには`claude-init`を使い、その後の開発にAdaptive Claude Agentsを使うことをお勧めします！
-
----
-
-## 🤝 コントリビューション
-
-貢献を歓迎します！このプロジェクトは初期開発中 - 参加する絶好のタイミングです。
-
-### 貢献方法
-
-- 💡 **アイデア・フィードバック**: [GitHub Issue](https://github.com/SawanoLab/adaptive-claude-agents/issues)を開く
-- 🐛 **バグ報告**: 問題を報告（コードができたら！）
-- 📝 **テンプレート**: 新しい技術スタックのサポートを追加
-- 📖 **ドキュメント**: ガイドや例を改善
-- 🌍 **翻訳**: ドキュメントの翻訳を手伝う
-
-詳細なガイドラインは[CONTRIBUTING.md](./CONTRIBUTING.md)をご覧ください。
-
-### 優先的に必要な貢献
-
-- **テンプレート**: Django、Flask、Vue、Angular、Flutter
-- **検出ロジック**: 精度向上
-- **ドキュメント**: チュートリアル、ビデオ
-- **テスト**: ユニット・統合テスト
+**詳細ガイド**: [クイックスタート](./docs/QUICKSTART.md) (5分)
 
 ---
 
 ## 📚 ドキュメント
 
-- [コントリビューションガイド](./CONTRIBUTING.md) - 貢献方法
-- [ライセンス](./LICENSE) - MITライセンス
-
-**内部開発ドキュメント**（公開リポジトリには含まれません）：
-
-- 設計議論
-- 実装詳細
-- リリース戦略
+| ドキュメント | 説明 |
+|----------|------|
+| [クイックスタート](./docs/QUICKSTART.md) | 5分で始めるガイド |
+| [使用例](./docs/EXAMPLES.md) | 5つの実例と完全な出力 |
+| [トラブルシューティング](./docs/TROUBLESHOOTING.md) | よくある問題と解決策 |
+| [コントリビューション](./CONTRIBUTING.md) | テンプレートの追加方法 |
+| [変更履歴](./CHANGELOG.md) | バージョン履歴 |
 
 ---
 
-## 🌟 インスピレーションとクレジット
+## 🎯 動作の仕組み
 
-このプロジェクトは以下から着想を得ています：
+### 1. プロジェクト分析
 
-- [claude-init](https://github.com/dimitritholen/claude-init) by @dimitritholen
-- [awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) by @VoltAgent
-- 伝統的なソフトウェアQAベストプラクティス
+```bash
+$ python3 skills/project-analyzer/detect_stack.py .
 
-フィードバックとアイデアをくれたClaude Codeコミュニティに感謝！
+検出: Next.js 14 + TypeScript
+信頼度: 98%
+ツール: Vitest, Testing Library, Tailwind CSS
+```
+
+### 2. フェーズ検出
+
+```bash
+$ python3 skills/adaptive-review/detect_phase.py .
+
+フェーズ: MVP
+信頼度: 72%
+
+指標:
+  • バージョン 0.5.0 → MVP
+  • 127コミット → MVPステージ
+  • 45テストファイル → 基本的なテスト (56%)
+  • CI/CD: GitHub Actions ✓
+```
+
+### 3. サブエージェント生成
+
+```bash
+生成されたサブエージェント:
+  ✓ .claude/agents/nextjs-tester.md
+
+変数置換:
+  {{FRAMEWORK}} → Next.js
+  {{LANGUAGE}} → TypeScript
+  {{VERSION}} → 14.2.0
+```
+
+### 4. 適応的レビュー
+
+レビュー基準が自動的に調整されます：
+
+- **プロトタイプ**: 高速な反復を促進、品質チェックは保留
+- **MVP**: 機能と品質のバランス
+- **本番**: 厳格な基準を適用（テストカバレッジ80%+、セキュリティ監査等）
+
+---
+
+## 🌟 独自性
+
+### 他ツールとの比較
+
+| 機能 | Adaptive Claude Agents | GitHub Copilot | Cursor |
+|------|------------------------|----------------|--------|
+| 技術スタック自動検出 | ✅ 10フレームワーク | ❌ | ❌ |
+| 専門エージェント生成 | ✅ 13テンプレート | ❌ | ❌ |
+| **フェーズ適応レビュー** | ✅ **業界初** | ❌ | ❌ |
+| 全プロジェクトで動作 | ✅ グローバルSkills | ❌ | ❌ |
+| オープンソース | ✅ MIT | ❌ | ❌ |
+
+---
+
+## 📦 対応フレームワーク
+
+| カテゴリー | フレームワーク | テンプレート数 |
+|-----------|--------------|--------------|
+| **フロントエンド** | Next.js, React, Vue | 1テンプレート |
+| **バックエンド** | FastAPI, Django, Flask | 3テンプレート (FastAPI) |
+| **Web** | バニラPHP/JavaScript | 4テンプレート |
+| **ML/CV** | Python ML, Computer Vision | 2テンプレート |
+| **モバイル** | iOS Swift, Flutter | 1テンプレート (Swift) |
+| **その他** | Go | 1テンプレート |
+
+**合計**: 10フレームワーク、13専門テンプレート (~228KB)
+
+新しいフレームワークを追加したい場合: [テンプレートリクエスト](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=template_request.md)
+
+---
+
+## 🛠️ 開発
+
+### プロジェクト構造
+
+```text
+adaptive-claude-agents/
+├── skills/
+│   ├── project-analyzer/     # 技術スタック検出
+│   └── adaptive-review/      # フェーズ検出
+├── templates/                 # サブエージェントテンプレート (13)
+│   ├── nextjs/
+│   ├── fastapi/
+│   ├── vanilla-php-web/
+│   ├── python-ml/
+│   └── ios-swift/
+├── docs/                      # ユーザードキュメント
+└── install.sh                 # インストールスクリプト
+```
+
+### 技術スタック
+
+- **言語**: Python 3.9+
+- **検出**: ファイルベース + コンテンツ分析
+- **テンプレート**: 変数置換付きMarkdown
+- **統合**: Claude Code Skills
+
+---
+
+## 🤝 コントリビューション
+
+コントリビューションを歓迎します！詳細は [CONTRIBUTING.md](./CONTRIBUTING.md) を参照：
+
+- 新しいフレームワークテンプレートの追加
+- 検出精度の改善
+- ドキュメントの拡充
+- バグ報告
+
+**クイックリンク**:
+
+- [バグ報告](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=bug_report.md)
+- [機能リクエスト](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=feature_request.md)
+- [テンプレートリクエスト](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=template_request.md)
 
 ---
 
 ## 📄 ライセンス
 
-[MITライセンス](./LICENSE) - Copyright (c) 2025 Sawano Hiroaki
+MIT License - 詳細は [LICENSE](./LICENSE) を参照してください。
+
+**帰属表示**: このプロジェクトを使用する場合、このリポジトリへのリンクをいただけると嬉しいです。
 
 ---
 
-## 🙋 作者
+## 🙏 謝辞
 
-Sawano Hiroaki
+**澤野研究室**（愛知工業大学）で開発されました。
 
-- GitHub: [@SawanoLab](https://github.com/SawanoLab)
+**インスピレーション元**:
+
+- [Anthropic's Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)
+- [Progressive Disclosure Pattern](https://www.nngroup.com/articles/progressive-disclosure/)
+
+**Special Thanks**:
+
+- AnthropicのClaude CodeとSkillsフレームワーク
+- 澤野研究室のアルファテスター
+- すべてのコントリビューター
 
 ---
 
-## ⭐ Star履歴
+## 📬 お問い合わせ
 
-このプロジェクトが興味深いと思ったら、Starして開発をフォローしてください！
-
-[![Star History Chart](https://api.star-history.com/svg?repos=SawanoLab/adaptive-claude-agents&type=Date)](https://star-history.com/#SawanoLab/adaptive-claude-agents&Date)
+- **Issues**: [GitHub Issues](https://github.com/SawanoLab/adaptive-claude-agents/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/SawanoLab/adaptive-claude-agents/discussions)
+- **セキュリティ**: <security@sawanolab.org>
 
 ---
 
-**ステータス**: プレアルファ | **次のマイルストーン**: Phase 1完了（予定：2週間後）
+### 澤野研究室より ❤️
 
-Claude Codeコミュニティのために ❤️ を込めて
+⭐ 役に立った場合はGitHubでスターをお願いします！

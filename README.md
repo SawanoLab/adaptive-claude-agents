@@ -1,244 +1,255 @@
 # Adaptive Claude Agents
 
-> **🚧 Status**: Phase 3 Complete! 🎉
-> Core detection + 10 frameworks + Adaptive Review Rigor! Ready for beta testing.
+> **Status**: Beta Testing 🚀
+>
+> Auto-generate project-specific Claude Code subagents that adapt to your development phase.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Development Status](https://img.shields.io/badge/status-pre--alpha-red)](https://github.com/SawanoLab/adaptive-claude-agents)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-[日本語版 README](./README.ja.md)
-
-Automatically generates **project-specific Claude Code subagents** and adjusts their behavior based on your **development phase**.
+[日本語版 README](./README.ja.md) | [Documentation](./docs/) | [Examples](./docs/EXAMPLES.md) | [Troubleshooting](./docs/TROUBLESHOOTING.md)
 
 ---
 
-## 🎯 What is this?
+## What is this?
 
-### The Problem
+**Adaptive Claude Agents** automatically generates specialized Claude Code subagents for your project and adjusts code review rigor based on your development phase.
 
-Setting up Claude Code for a new project is tedious:
+### Two Novel Features
 
-- Manually creating subagents for each tech stack
-- Same strict code review for quick prototypes and production code
-- Reconfiguring agents as project matures
+#### 1. 🔍 Auto-Detection & Subagent Generation
 
-### The Solution
-
-**Adaptive Claude Agents** solves this with two innovative features:
-
-#### 1. 🔍 Auto-Detection & Generation
-
-Analyzes your project structure and automatically generates appropriate subagents:
+Analyzes your project and generates appropriate subagents:
 
 ```bash
-# Detects: Next.js + TypeScript + Tailwind CSS
-→ Generates: nextjs-tester, component-reviewer, type-checker
+Detected: Next.js 14 + TypeScript + Vitest
+→ Generated: nextjs-tester
 
-# Detects: FastAPI + PostgreSQL + pytest
-→ Generates: fastapi-tester, api-reviewer, db-schema-checker
+Detected: FastAPI + SQLAlchemy + pytest
+→ Generated: api-developer, api-tester, sqlalchemy-specialist
 ```
 
-Integrated as **global Claude Skills** - works across all your projects!
+**Supported Frameworks** (10): Next.js, React, Vue, FastAPI, Django, Flask, Vanilla PHP/Web, Python ML/CV, iOS Swift, Go, Flutter
 
-#### 2. 📊 Phase-Adaptive Review Rigor ⭐ **Novel Approach**
+#### 2. 📊 Phase-Adaptive Review ⭐ **Industry First**
 
-**First tool to bring traditional QA principles to AI agents:**
+Automatically adjusts review standards based on development phase:
 
-| Phase | Review Focus | What It Checks | Example |
-|-------|-------------|----------------|---------|
-| **Prototype** | "Does it work?" | Basic functionality only | Skip performance, style |
-| **MVP** | "Is it secure?" | Common vulnerabilities | Basic security audit |
-| **Production** | "Is it perfect?" | Everything | Full audit + optimization |
+| Phase | Review Rigor | Focus |
+|-------|--------------|-------|
+| **Prototype** | Light (3/10) | "Does it work?" |
+| **MVP** | Moderate (6/10) | "Is it secure?" |
+| **Production** | Strict (10/10) | "Is it perfect?" |
 
-Automatically adjusts based on development phase markers in your codebase.
-
----
-
-## ✨ Key Features
-
-- ✅ **Zero Configuration**: Works out of the box
-- ✅ **Tech Stack Agnostic**: Supports 10 frameworks (Next.js, FastAPI, vanilla PHP, Python ML, iOS Swift, and more)
-- ✅ **Phase-Aware**: Adapts review rigor automatically
-- ✅ **Global Skills**: One setup, works everywhere
-- ✅ **Community Templates**: Easy to add new tech stacks
-- ✅ **Progressive Disclosure**: Follows Anthropic's best practices
+No other AI coding tool (GitHub Copilot, Cursor, etc.) has this.
 
 ---
 
 ## 🚀 Quick Start
 
-> **Note**: Coming soon in Phase 1 release
-
-### Installation (Planned)
+### Installation
 
 ```bash
-# Install as global Claude Skill
+# One-command install
 curl -fsSL https://raw.githubusercontent.com/SawanoLab/adaptive-claude-agents/main/install.sh | bash
 ```
 
-### Usage (Planned)
+Or manual install:
 
-1. Open any project in Claude Code
-2. Skill auto-detects your tech stack
-3. Confirms before generating subagents
-4. Ready to code with optimized agents!
-
-```
-Detected: Next.js + TypeScript + Tailwind CSS
-Generate these subagents?
-  - nextjs-tester (Vitest + Testing Library)
-  - component-reviewer (React best practices)
-  - type-checker (TypeScript strict mode)
-[Y/n]
+```bash
+git clone https://github.com/SawanoLab/adaptive-claude-agents.git
+cd adaptive-claude-agents
+./install.sh
 ```
 
----
+### Usage
 
-## 📁 Project Structure
+In Claude Code, simply ask:
 
-```
-adaptive-claude-agents/
-├── skills/                 # Claude Skills implementation
-│   ├── project-analyzer/   # Auto-detection logic
-│   └── adaptive-review/    # Phase-aware review
-├── templates/              # Subagent templates
-│   ├── nextjs/
-│   ├── fastapi/
-│   ├── react-native/
-│   └── go/
-├── examples/               # Usage examples
-└── docs/                   # Documentation
+```text
+> "Analyze my project and generate appropriate subagents"
 ```
 
----
+Or use directly:
 
-## 🛣️ Roadmap
+```bash
+python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py .
+```
 
-- [x] Project conception & planning
-- [x] **Phase 1**: Basic project analyzer ✅
-  - [x] Tech stack detection
-  - [x] Next.js template
-  - [x] Basic subagent generation
-- [x] **Phase 2**: Multiple tech stacks (2 weeks) ✅
-  - [x] FastAPI, vanilla PHP, Python ML, iOS Swift templates
-  - [x] Improved detection accuracy
-  - [x] 10 frameworks, 13 templates implemented
-- [x] **Phase 3**: Adaptive review rigor ✅ **🌟 NOVEL FEATURE**
-  - [x] 7-signal phase detection (user config, version, git, tests, CI/CD, docs, structure)
-  - [x] Phase configurations (prototype.yaml, mvp.yaml, production.yaml)
-  - [x] Adaptive review standards based on project maturity
-  - [x] Tested on real projects (adaptive-claude-agents: prototype, c-campus: production)
-- [ ] **Phase 4**: Public beta release
-
-See our [internal project board](https://github.com/SawanoLab/adaptive-claude-agents/projects) for detailed progress.
-
----
-
-## 📦 Supported Frameworks (Phase 2)
-
-| Framework | Templates | Status |
-|-----------|-----------|--------|
-| **Next.js** | tester | ✅ Phase 1 |
-| **Vanilla PHP/Web** | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ Phase 2 |
-| **FastAPI** | api-developer, api-tester, sqlalchemy-specialist | ✅ Phase 2 |
-| **Python ML/CV** | python-ml-developer, cv-specialist | ✅ Phase 2 |
-| **iOS Swift** | swift-developer | ✅ Phase 2 |
-| **React** | Basic detection | 🚧 Phase 1 |
-| **Vue** | Basic detection | 🚧 Phase 1 |
-| **Django** | Basic detection | 🚧 Phase 1 |
-| **Flask** | Basic detection | 🚧 Phase 1 |
-| **Flutter** | Basic detection | 🚧 Phase 1 |
-
-**Total**: 10 frameworks detected, 13 specialized templates
-
----
-
-## 🆚 How is this different?
-
-| Feature | [claude-init](https://github.com/dimitritholen/claude-init) | **Adaptive Claude Agents** |
-|---------|-------------|---------------------------|
-| **Timing** | One-time setup | Continuous (Skills-based) |
-| **Phase Adaptation** | ❌ No | ✅ **Unique feature** |
-| **Updates** | Project start only | Ongoing |
-| **Integration** | CLI tool | Claude Skills |
-| **Tech Stack Detection** | Manual | Automatic |
-
-**Complementary Tools**: We recommend using `claude-init` for initial setup, then Adaptive Claude Agents for ongoing development!
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! This project is in early development - a great time to get involved.
-
-### Ways to Contribute
-
-- 💡 **Ideas & Feedback**: Open a [GitHub Issue](https://github.com/SawanoLab/adaptive-claude-agents/issues)
-- 🐛 **Bug Reports**: Report issues (when we have code!)
-- 📝 **Templates**: Add support for new tech stacks
-- 📖 **Documentation**: Improve guides and examples
-- 🌍 **Translations**: Help translate documentation
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.
-
-### Priority Contributions Needed
-
-- **Templates**: Django, Flask, Vue, Angular, Flutter
-- **Detection Logic**: Improve accuracy
-- **Documentation**: Tutorials, videos
-- **Testing**: Unit & integration tests
+**Full guide**: [Quick Start](./docs/QUICKSTART.md) (5 minutes)
 
 ---
 
 ## 📚 Documentation
 
-- [Contributing Guide](./CONTRIBUTING.md) - How to contribute
-- [License](./LICENSE) - MIT License
-
-**Internal Development Docs** (not in public repo):
-
-- Design discussions
-- Implementation details
-- Release strategy
+| Document | Description |
+|----------|-------------|
+| [Quick Start](./docs/QUICKSTART.md) | 5-minute getting started guide |
+| [Examples](./docs/EXAMPLES.md) | 5 real-world examples with full output |
+| [Troubleshooting](./docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| [Contributing](./CONTRIBUTING.md) | How to contribute templates |
+| [Changelog](./CHANGELOG.md) | Version history |
 
 ---
 
-## 🌟 Inspiration & Credits
+## 🎯 How It Works
 
-This project is inspired by:
+### 1. Project Analysis
 
-- [claude-init](https://github.com/dimitritholen/claude-init) by @dimitritholen
-- [awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) by @VoltAgent
-- Traditional software QA best practices
+```bash
+$ python3 skills/project-analyzer/detect_stack.py .
 
-Special thanks to the Claude Code community for feedback and ideas!
+Detected: Next.js 14 + TypeScript
+Confidence: 98%
+Tools: Vitest, Testing Library, Tailwind CSS
+```
+
+### 2. Phase Detection
+
+```bash
+$ python3 skills/adaptive-review/detect_phase.py .
+
+Phase: MVP
+Confidence: 72%
+
+Indicators:
+  • Version 0.5.0 → MVP
+  • 127 commits → MVP stage
+  • 45 test files → basic testing (56%)
+  • CI/CD: GitHub Actions ✓
+```
+
+### 3. Subagent Generation
+
+```bash
+Generated subagents:
+  ✓ .claude/agents/nextjs-tester.md
+
+Variables substituted:
+  {{FRAMEWORK}} → Next.js
+  {{LANGUAGE}} → TypeScript
+  {{VERSION}} → 14.2.0
+```
+
+### 4. Adaptive Review
+
+Review standards automatically adjust:
+
+- **Prototype**: Encourages rapid iteration, defers quality checks
+- **MVP**: Balances functionality and quality
+- **Production**: Enforces strict standards (80%+ test coverage, security audit, etc.)
+
+---
+
+## 🌟 What Makes It Unique
+
+### Compared to Other Tools
+
+| Feature | Adaptive Claude Agents | GitHub Copilot | Cursor |
+|---------|------------------------|----------------|--------|
+| Auto-detect tech stack | ✅ 10 frameworks | ❌ | ❌ |
+| Generate specialized agents | ✅ 13 templates | ❌ | ❌ |
+| **Phase-adaptive review** | ✅ **Industry first** | ❌ | ❌ |
+| Works across all projects | ✅ Global Skills | ❌ | ❌ |
+| Open source | ✅ MIT | ❌ | ❌ |
+
+---
+
+## 📦 Supported Frameworks
+
+| Category | Frameworks | Templates |
+|----------|------------|-----------|
+| **Frontend** | Next.js, React, Vue | 1 template |
+| **Backend** | FastAPI, Django, Flask | 3 templates (FastAPI) |
+| **Web** | Vanilla PHP/JavaScript | 4 templates |
+| **ML/CV** | Python ML, Computer Vision | 2 templates |
+| **Mobile** | iOS Swift, Flutter | 1 template (Swift) |
+| **Other** | Go | 1 template |
+
+**Total**: 10 frameworks, 13 specialized templates (~228KB)
+
+Want to add your framework? See [Template Request](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=template_request.md)
+
+---
+
+## 🛠️ Development
+
+### Project Structure
+
+```text
+adaptive-claude-agents/
+├── skills/
+│   ├── project-analyzer/     # Tech stack detection
+│   └── adaptive-review/      # Phase detection
+├── templates/                 # Subagent templates (13)
+│   ├── nextjs/
+│   ├── fastapi/
+│   ├── vanilla-php-web/
+│   ├── python-ml/
+│   └── ios-swift/
+├── docs/                      # User documentation
+└── install.sh                 # Installation script
+```
+
+### Tech Stack
+
+- **Language**: Python 3.9+
+- **Detection**: File-based + content analysis
+- **Templates**: Markdown with variable substitution
+- **Integration**: Claude Code Skills
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
+
+- Adding new framework templates
+- Improving detection accuracy
+- Enhancing documentation
+- Reporting bugs
+
+**Quick Links**:
+
+- [Bug Report](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=bug_report.md)
+- [Feature Request](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=feature_request.md)
+- [Template Request](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=template_request.md)
 
 ---
 
 ## 📄 License
 
-[MIT License](./LICENSE) - Copyright (c) 2025 Sawano Hiroaki
+MIT License - see [LICENSE](./LICENSE) for details.
+
+**Attribution**: If you use this project, a link back to this repository is appreciated.
 
 ---
 
-## 🙋 Author
+## 🙏 Acknowledgments
 
-Sawano Hiroaki
+Developed at **SawanoLab**, Aichi Institute of Technology.
 
-- GitHub: [@SawanoLab](https://github.com/SawanoLab)
-- Organization: Aichi Institute of Technology
+**Inspired by**:
+
+- [Anthropic's Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)
+- [Progressive Disclosure Pattern](https://www.nngroup.com/articles/progressive-disclosure/)
+
+**Special Thanks**:
+
+- Anthropic for Claude Code and the Skills framework
+- Alpha testers from SawanoLab
+- All contributors to this project
 
 ---
 
-## ⭐ Star History
+## 📬 Contact
 
-If you find this project interesting, please consider starring it to follow development!
-
-[![Star History Chart](https://api.star-history.com/svg?repos=SawanoLab/adaptive-claude-agents&type=Date)](https://star-history.com/#SawanoLab/adaptive-claude-agents&Date)
+- **Issues**: [GitHub Issues](https://github.com/SawanoLab/adaptive-claude-agents/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/SawanoLab/adaptive-claude-agents/discussions)
+- **Security**: <security@sawanolab.org>
 
 ---
 
-**Status**: Pre-alpha | **Next Milestone**: Phase 1 completion (ETA: 2 weeks)
+### Made with ❤️ by SawanoLab
 
-Made with ❤️ for the Claude Code community
+⭐ Star us on GitHub if you find this useful!
