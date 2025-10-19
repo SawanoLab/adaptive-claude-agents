@@ -76,6 +76,10 @@ Claude Codeで以下のように尋ねるだけ：
 または直接実行：
 
 ```bash
+# macOS
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" .
+
+# Linux/WSL
 python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py .
 ```
 
