@@ -1,10 +1,13 @@
 # Adaptive Claude Agents
 
-> **ステータス**: Week 3 - アルファテスト中 🧪 | パブリックベータ: 10月27-28日 🚀
+> **ステータス**: パブリックベータ 🚀
 >
 > プロジェクト固有のClaude Codeサブエージェントを自動生成し、開発フェーズに応じて動作を適応させます。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-0.4.0--beta-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)](#インストール)
+[![Status](https://img.shields.io/badge/status-public%20beta-green.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English README](./README.md) | [ドキュメント](./docs/) | [使用例](./docs/EXAMPLES.md) | [トラブルシューティング](./docs/TROUBLESHOOTING.md)
