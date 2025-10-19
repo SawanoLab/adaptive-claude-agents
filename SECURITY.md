@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-This project is currently in **pre-alpha** development (Phase 1). Security updates will be provided for:
+This project is currently in **beta** development (Phase 4). Security updates will be provided for:
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -21,7 +21,7 @@ Please **do not** report security vulnerabilities through public GitHub issues, 
 
 ### 2. Report Privately
 
-Send a detailed report to: **[INSERT SECURITY EMAIL]**
+Send a detailed report to: **security@sawanolab.org** or use [GitHub Security Advisories](https://github.com/SawanoLab/adaptive-claude-agents/security/advisories/new)
 
 Include:
 
@@ -166,14 +166,14 @@ npm audit
 
 ## Known Security Limitations
 
-As a **pre-alpha** project, be aware of these limitations:
+As a **beta** project, be aware of these limitations:
 
 1. **Limited Testing**: Security testing is not yet comprehensive
 2. **Rapid Changes**: Security features are still being developed
 3. **Community Templates**: Not all templates are vetted equally
 4. **MCP Integration**: Relies on security of MCP servers
 
-**Recommendation**: Use in **non-production** environments during pre-alpha.
+**Recommendation**: Use in **non-production** environments during beta testing.
 
 ## Security Resources
 
@@ -195,16 +195,16 @@ We would like to thank the following individuals for responsibly disclosing secu
 
 <!-- Will be populated as vulnerabilities are reported and fixed -->
 
-*No vulnerabilities reported yet (project in pre-alpha)*
+*No vulnerabilities reported yet (project in beta)*
 
 ## Questions?
 
 - **General security questions**: Open a [GitHub Discussion](https://github.com/SawanoLab/adaptive-claude-agents/discussions)
-- **Security vulnerability**: Email [INSERT SECURITY EMAIL]
+- **Security vulnerability**: Email security@sawanolab.org or use [GitHub Security Advisories](https://github.com/SawanoLab/adaptive-claude-agents/security/advisories/new)
 - **Security feature requests**: Create a [GitHub Issue](https://github.com/SawanoLab/adaptive-claude-agents/issues) with `security` label
 
 ---
 
-**Last Updated**: 2025-01-19
+**Last Updated**: 2025-10-19
 
-**Note**: This security policy will be updated as the project matures. Current focus is on establishing secure development practices during Phase 1.
+**Note**: This security policy will be updated as the project matures. Current focus is on establishing secure development practices for public beta release (Phase 4).
