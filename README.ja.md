@@ -10,7 +10,7 @@
 [![Status](https://img.shields.io/badge/status-public%20beta-green.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-[English README](./README.md) | [ドキュメント](./docs/) | [使用例](./docs/EXAMPLES.md) | [トラブルシューティング](./docs/TROUBLESHOOTING.md)
+[English README](./README.md) | [ドキュメント](./docs/) | [使用例](./docs/EXAMPLES.ja.md) | [トラブルシューティング](./docs/TROUBLESHOOTING.ja.md)
 
 ---
 
@@ -83,7 +83,7 @@ python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/
 python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py .
 ```
 
-**詳細ガイド**: [クイックスタート](./docs/QUICKSTART.md) (5分)
+**詳細ガイド**: [クイックスタート](./docs/QUICKSTART.ja.md) (5分)
 
 ---
 
@@ -91,9 +91,9 @@ python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/a
 
 | ドキュメント | 説明 |
 |----------|------|
-| [クイックスタート](./docs/QUICKSTART.md) | 5分で始めるガイド |
-| [使用例](./docs/EXAMPLES.md) | 5つの実例と完全な出力 |
-| [トラブルシューティング](./docs/TROUBLESHOOTING.md) | よくある問題と解決策 |
+| [クイックスタート](./docs/QUICKSTART.ja.md) | 5分で始めるガイド |
+| [使用例](./docs/EXAMPLES.ja.md) | 5つの実例と完全な出力 |
+| [トラブルシューティング](./docs/TROUBLESHOOTING.ja.md) | よくある問題と解決策 |
 | [コントリビューション](./CONTRIBUTING.md) | テンプレートの追加方法 |
 | [変更履歴](./CHANGELOG.md) | バージョン履歴 |
 
