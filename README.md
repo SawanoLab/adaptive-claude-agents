@@ -116,13 +116,14 @@ adaptive-claude-agents/
 ## 🛣️ Roadmap
 
 - [x] Project conception & planning
-- [ ] **Phase 1**: Basic project analyzer (In Progress)
-  - [ ] Tech stack detection
-  - [ ] Next.js template
-  - [ ] Basic subagent generation
-- [ ] **Phase 2**: Multiple tech stacks (2 weeks)
-  - [ ] FastAPI, React Native, Go templates
-  - [ ] Improved detection accuracy
+- [x] **Phase 1**: Basic project analyzer ✅
+  - [x] Tech stack detection
+  - [x] Next.js template
+  - [x] Basic subagent generation
+- [x] **Phase 2**: Multiple tech stacks (2 weeks) ✅
+  - [x] FastAPI, vanilla PHP, Python ML, iOS Swift templates
+  - [x] Improved detection accuracy
+  - [x] 10 frameworks, 13 templates implemented
 - [ ] **Phase 3**: Adaptive review rigor (3 weeks)
   - [ ] Phase detection logic
   - [ ] Phase-specific subagents

@@ -1,7 +1,7 @@
 # Adaptive Claude Agents
 
-> **🚧 ステータス**: 初期開発中（Phase 1）
-> 現在、コア機能を実装中です。Star & Watch で進捗をフォロー！
+> **🚧 ステータス**: Phase 2 完了！
+> コア検出 + 10フレームワーク対応完了。Phase 3（適応的レビュー）近日公開！
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Development Status](https://img.shields.io/badge/status-pre--alpha-red)](https://github.com/SawanoLab/adaptive-claude-agents)
@@ -58,7 +58,7 @@ Claude Codeで新規プロジェクトを始めるのは面倒です：
 ## ✨ 主な機能
 
 - ✅ **ゼロコンフィグ**: すぐに動作
-- ✅ **技術スタック非依存**: Next.js、FastAPI、Go、React Nativeなどに対応
+- ✅ **技術スタック非依存**: 10フレームワーク対応（Next.js、FastAPI、バニラPHP、Python ML、iOS Swiftなど）
 - ✅ **フェーズ対応**: レビュー濃度を自動調整
 - ✅ **グローバルSkills**: 一度の設定で全プロジェクトで利用可能
 - ✅ **コミュニティテンプレート**: 新しい技術スタックの追加が容易
@@ -116,19 +116,39 @@ adaptive-claude-agents/
 ## 🛣️ ロードマップ
 
 - [x] プロジェクト構想と計画
-- [ ] **Phase 1**: 基本プロジェクト分析器（実装中）
-  - [ ] 技術スタック検出
-  - [ ] Next.jsテンプレート
-  - [ ] 基本的なサブエージェント生成
-- [ ] **Phase 2**: 複数の技術スタック（2週間）
-  - [ ] FastAPI、React Native、Goテンプレート
-  - [ ] 検出精度の向上
+- [x] **Phase 1**: 基本プロジェクト分析器 ✅
+  - [x] 技術スタック検出
+  - [x] Next.jsテンプレート
+  - [x] 基本的なサブエージェント生成
+- [x] **Phase 2**: 複数の技術スタック（2週間）✅
+  - [x] FastAPI、バニラPHP、Python ML、iOS Swiftテンプレート
+  - [x] 検出精度の向上
+  - [x] 10フレームワーク、13テンプレート実装完了
 - [ ] **Phase 3**: 適応的レビュー濃度（3週間）
   - [ ] フェーズ検出ロジック
   - [ ] フェーズ別サブエージェント
 - [ ] **Phase 4**: パブリックベータリリース
 
 詳細な進捗は[内部プロジェクトボード](https://github.com/SawanoLab/adaptive-claude-agents/projects)をご覧ください。
+
+---
+
+## 📦 対応フレームワーク（Phase 2）
+
+| フレームワーク | テンプレート | ステータス |
+|--------------|------------|----------|
+| **Next.js** | tester | ✅ Phase 1 |
+| **バニラPHP/Web** | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ Phase 2 |
+| **FastAPI** | api-developer, api-tester, sqlalchemy-specialist | ✅ Phase 2 |
+| **Python ML/CV** | python-ml-developer, cv-specialist | ✅ Phase 2 |
+| **iOS Swift** | swift-developer | ✅ Phase 2 |
+| **React** | 基本検出のみ | 🚧 Phase 1 |
+| **Vue** | 基本検出のみ | 🚧 Phase 1 |
+| **Django** | 基本検出のみ | 🚧 Phase 1 |
+| **Flask** | 基本検出のみ | 🚧 Phase 1 |
+| **Flutter** | 基本検出のみ | 🚧 Phase 1 |
+
+**合計**: 10フレームワーク検出、13専門テンプレート
 
 ---
 
