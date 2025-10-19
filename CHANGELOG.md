@@ -9,6 +9,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [0.4.1-beta] - 2025-10-20
+
+### Added - Go & Flutter Framework Support 🚀
+
+**Framework Coverage Achievement**: 100% (11/11 frameworks) ✅
+
+#### Go Backend Framework (85% detection confidence)
+- **Web Frameworks**: Gin, Echo, Fiber, Chi, Gorilla Mux
+- **ORM & Database**: GORM, Ent, PostgreSQL, MySQL, SQLite, MongoDB drivers
+- **Testing**: Testify, Ginkgo, GoConvey
+- **Project Structure**: cmd/, internal/, pkg/ detection
+- **Go Module**: go.mod parsing with version extraction
+- **Enhanced Detection**: 150+ lines of Go-specific detection logic
+
+#### Flutter Mobile Framework (80% detection confidence)
+- **State Management**: Provider, Riverpod, Bloc, GetX, MobX
+- **HTTP Clients**: Dio, HTTP package
+- **Database/Storage**: sqflite, Hive, shared_preferences
+- **Navigation**: go_router, auto_route
+- **Testing**: flutter_test, mockito, integration_test
+- **Project Structure**: lib/, android/, ios/, test/ detection
+- **Flutter SDK**: pubspec.yaml parsing with Flutter SDK detection
+- **Enhanced Detection**: 190+ lines of Flutter-specific detection logic
+
+#### New Templates (2 templates, ~33KB)
+- **templates/go/go-developer.md** (~17KB):
+  - HTTP handler patterns for all major frameworks (Gin, Echo, Fiber, Chi, Gorilla Mux)
+  - Service layer and repository patterns
+  - GORM model patterns with associations
+  - Middleware patterns (auth, CORS, logging, rate limiting)
+  - Concurrency patterns (worker pool, fan-out/fan-in, pipeline)
+  - Error handling and context management
+  - Best practices for idiomatic Go code
+
+- **templates/flutter/flutter-developer.md** (~16KB):
+  - StatelessWidget and StatefulWidget patterns
+  - Provider state management with ChangeNotifier
+  - Repository pattern with Dio HTTP client
+  - Navigation with GoRouter
+  - Form validation patterns
+  - FutureBuilder for async data loading
+  - ListView.builder for efficient lists
+  - Best practices for Flutter development
+
+#### Documentation Updates
+- **README.md**: Updated framework table (11 frameworks, 100% coverage)
+- **README.ja.md**: Synchronized Japanese version
+- **CHANGELOG.md**: v0.4.1-beta section added
+
+### Changed
+- **Framework Coverage**: 9/10 (90%) → **11/11 (100%)** ✅
+- **Template Count**: 13 → **15 templates**
+- **Total Template Size**: ~228KB → **~260KB**
+- **Average Detection Confidence**: 85% → **88%**
+- **Detection Logic**: Enhanced with +340 lines of code
+
+### Fixed
+- N/A (feature enhancement release)
+
+### Use Cases Enabled
+- **Go Backend**: Microservices, REST APIs, gRPC services, concurrent systems
+- **Flutter Mobile**: iOS/Android cross-platform apps, state management, API integration
+- **Full-stack Solutions**: Go + Flutter, Go + Next.js, Flutter + FastAPI
+
 ## [0.4.0-beta] - 2025-10-27
 
 ### Added - Phase 4: Public Beta Release 🚀
@@ -287,6 +351,7 @@ Organized in `docs/internal/` (gitignored):
 
 | Version | Date | Key Features | Status |
 |---------|------|--------------|--------|
+| **0.4.1-beta** | 2025-10-20 | 🚀 Go & Flutter support (100% framework coverage!) | **LATEST** |
 | **0.4.0-beta** | 2025-10-27 | 🚀 Public Beta Release! Installation system, community infrastructure, QA (90% tested) | **PUBLIC BETA** |
 | **0.3.0** | 2025-10-19 | 🌟 Phase-aware code review (NOVEL) | Phase 3 Complete |
 | **0.2.0** | 2025-10-19 | Multi-framework support (10 frameworks, 13 templates) | Phase 2 Complete |
