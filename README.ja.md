@@ -32,7 +32,7 @@
 → 生成: api-developer, api-tester, sqlalchemy-specialist
 ```
 
-**対応フレームワーク** (10種類): Next.js, React, Vue, FastAPI, Django, Flask, バニラPHP/Web, Python ML/CV, iOS Swift, Go, Flutter
+**対応フレームワーク** (11種類): Next.js, React, Vue, FastAPI, Django, Flask, バニラPHP/Web, Python ML/CV, iOS Swift, Go, Flutter
 
 #### 2. 📊 フェーズ適応レビュー ⭐ **業界初**
 
@@ -154,8 +154,8 @@ $ python3 skills/adaptive-review/detect_phase.py .
 
 | 機能 | Adaptive Claude Agents | GitHub Copilot | Cursor |
 |------|------------------------|----------------|--------|
-| 技術スタック自動検出 | ✅ 10フレームワーク | ❌ | ❌ |
-| 専門エージェント生成 | ✅ 13テンプレート | ❌ | ❌ |
+| 技術スタック自動検出 | ✅ 11フレームワーク | ❌ | ❌ |
+| 専門エージェント生成 | ✅ 15テンプレート | ❌ | ❌ |
 | **フェーズ適応レビュー** | ✅ **業界初** | ❌ | ❌ |
 | 全プロジェクトで動作 | ✅ グローバルSkills | ❌ | ❌ |
 | オープンソース | ✅ MIT | ❌ | ❌ |
@@ -170,14 +170,15 @@ $ python3 skills/adaptive-review/detect_phase.py .
 | **バニラPHP/Web** | 100% | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ |
 | **Python ML/CV** | 100% | python-ml-developer, cv-specialist | ✅ |
 | **Vue** | 90% | (Next.jsテンプレート) | ✅ |
+| **Go** | 85% | go-developer, go-reviewer, concurrency-checker | ✅ |
+| **Flutter** | 80% | flutter-developer, widget-reviewer | ✅ |
 | **FastAPI** | 80% | api-developer, api-tester, sqlalchemy-specialist | ✅ |
 | **React** | 80% | (Next.jsテンプレート) | ✅ |
 | **Django** | 80% | (FastAPIテンプレート) | ✅ |
 | **iOS Swift** | 80% | swift-developer | ✅ |
 | **Flask** | 70% | (FastAPIテンプレート) | ✅ |
-| **Go/Flutter** | 予定 | TBD | ベータ後 |
 
-**合計**: 9/10フレームワークテスト済 (90%)、13専門テンプレート (~228KB)
+**合計**: 11/11フレームワークテスト済 (100%)、15専門テンプレート (~260KB)
 
 **凡例**: ✅ = Week 2テストで検証済み
 

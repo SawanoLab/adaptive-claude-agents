@@ -544,61 +544,402 @@ class TechStackDetector:
         return None
 
     def _detect_go(self) -> Optional[DetectionResult]:
-        """Detect Go projects."""
+        """
+        Detect Go projects.
+
+        Detection criteria:
+        - go.mod file (Go modules)
+        - Go framework detection (Gin, Echo, Fiber, Chi, Gorilla)
+        - Go files with common patterns
+        - Testing framework detection
+        - Database drivers and ORM detection
+
+        Returns:
+            DetectionResult if Go project detected, None otherwise
+        """
         go_mod = self.project_path / "go.mod"
         if not go_mod.exists():
             return None
 
-        confidence = 0.8
-        indicators = ["go.mod exists: +0.8"]
+        confidence = 0.7
+        indicators = ["go.mod exists: +0.7"]
+        tools = {}
+        version = None
 
-        # Try to detect framework
+        # Try to detect framework and dependencies
         framework = "go"
+        framework_detected = False
+
         try:
             with open(go_mod, 'r', encoding='utf-8') as f:
                 content = f.read()
+
+                # Framework detection
                 if 'gin-gonic/gin' in content:
                     framework = "go-gin"
-                    indicators.append("Gin framework: +0.1")
-                    confidence += 0.1
+                    indicators.append("Gin framework: +0.15")
+                    confidence += 0.15
+                    framework_detected = True
+                    tools['web-framework'] = ['gin']
                 elif 'labstack/echo' in content:
                     framework = "go-echo"
-                    indicators.append("Echo framework: +0.1")
-                    confidence += 0.1
+                    indicators.append("Echo framework: +0.15")
+                    confidence += 0.15
+                    framework_detected = True
+                    tools['web-framework'] = ['echo']
                 elif 'gofiber/fiber' in content:
                     framework = "go-fiber"
-                    indicators.append("Fiber framework: +0.1")
-                    confidence += 0.1
+                    indicators.append("Fiber framework: +0.15")
+                    confidence += 0.15
+                    framework_detected = True
+                    tools['web-framework'] = ['fiber']
+                elif 'go-chi/chi' in content:
+                    framework = "go-chi"
+                    indicators.append("Chi router: +0.15")
+                    confidence += 0.15
+                    framework_detected = True
+                    tools['web-framework'] = ['chi']
+                elif 'gorilla/mux' in content:
+                    framework = "go-gorilla"
+                    indicators.append("Gorilla Mux router: +0.15")
+                    confidence += 0.15
+                    framework_detected = True
+                    tools['web-framework'] = ['gorilla-mux']
+
+                # Go version detection
+                import re
+                go_version_match = re.search(r'go (\d+\.\d+)', content)
+                if go_version_match:
+                    version = go_version_match.group(1)
+
+                # ORM/Database libraries
+                if 'gorm.io/gorm' in content:
+                    tools.setdefault('orm', []).append('gorm')
+                    indicators.append("GORM ORM: +0.05")
+                    confidence += 0.05
+                elif 'ent' in content or 'entgo.io' in content:
+                    tools.setdefault('orm', []).append('ent')
+                    indicators.append("Ent ORM: +0.05")
+                    confidence += 0.05
+
+                # Database drivers
+                if 'lib/pq' in content or 'gorm.io/driver/postgres' in content:
+                    tools.setdefault('database', []).append('postgresql')
+                elif 'go-sql-driver/mysql' in content or 'gorm.io/driver/mysql' in content:
+                    tools.setdefault('database', []).append('mysql')
+                elif 'mattn/go-sqlite3' in content or 'gorm.io/driver/sqlite' in content:
+                    tools.setdefault('database', []).append('sqlite')
+                elif 'go.mongodb.org/mongo-driver' in content:
+                    tools.setdefault('database', []).append('mongodb')
+
+                # Testing frameworks
+                if 'testify' in content or 'stretchr/testify' in content:
+                    tools.setdefault('testing', []).append('testify')
+                if 'ginkgo' in content:
+                    tools.setdefault('testing', []).append('ginkgo')
+                if 'goconvey' in content:
+                    tools.setdefault('testing', []).append('goconvey')
+
+                # API/HTTP clients
+                if 'go-resty/resty' in content:
+                    tools.setdefault('http-client', []).append('resty')
+
+                # Logging
+                if 'sirupsen/logrus' in content:
+                    tools.setdefault('logging', []).append('logrus')
+                elif 'uber-go/zap' in content:
+                    tools.setdefault('logging', []).append('zap')
+
+                # Config management
+                if 'spf13/viper' in content:
+                    tools.setdefault('config', []).append('viper')
+
         except UnicodeDecodeError:
             pass
 
+        # Check for Go source files with common patterns
+        go_files = list(self.project_path.glob("*.go"))
+        go_files.extend(list(self.project_path.glob("cmd/**/*.go")))
+        go_files.extend(list(self.project_path.glob("internal/**/*.go")))
+        go_files.extend(list(self.project_path.glob("pkg/**/*.go")))
+
+        go_patterns = [
+            'func main(',
+            'http.ListenAndServe',
+            'router.Run(',
+            'e.Start(',
+            'app.Listen('
+        ]
+
+        for go_file in go_files[:15]:
+            if 'vendor' in str(go_file):
+                continue
+
+            try:
+                with open(go_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                    for pattern in go_patterns:
+                        if pattern in content:
+                            confidence += 0.05
+                            indicators.append(f"Go pattern '{pattern}' in {go_file.name}: +0.05")
+                            break
+
+            except (UnicodeDecodeError, PermissionError):
+                continue
+
+        # Check for Dockerfile (common in Go projects)
+        if (self.project_path / "Dockerfile").exists():
+            tools.setdefault('containerization', []).append('docker')
+            confidence += 0.05
+            indicators.append("Dockerfile: +0.05")
+
+        # Recommended subagents
+        recommended_subagents = ['go-developer', 'go-reviewer', 'concurrency-checker']
+
+        if framework_detected and tools.get('web-framework'):
+            recommended_subagents.append('api-developer')
+
+        if 'testify' in tools.get('testing', []):
+            recommended_subagents.append('go-tester')
+
+        if tools.get('orm'):
+            if 'gorm' in tools['orm']:
+                recommended_subagents.append('gorm-specialist')
+            elif 'ent' in tools['orm']:
+                recommended_subagents.append('ent-specialist')
+
+        if tools.get('database'):
+            if 'postgresql' in tools['database']:
+                recommended_subagents.append('postgresql-specialist')
+            elif 'mysql' in tools['database']:
+                recommended_subagents.append('mysql-specialist')
+            elif 'mongodb' in tools['database']:
+                recommended_subagents.append('mongodb-specialist')
+
+        # Project structure
+        project_structure = {
+            'has_go_mod': True,
+            'has_cmd_dir': (self.project_path / 'cmd').exists(),
+            'has_internal_dir': (self.project_path / 'internal').exists(),
+            'has_pkg_dir': (self.project_path / 'pkg').exists(),
+            'has_dockerfile': (self.project_path / 'Dockerfile').exists(),
+            'framework': framework
+        }
+
         return DetectionResult(
             framework=framework,
+            version=version,
             language="go",
             confidence=min(confidence, 1.0),
             indicators=indicators,
-            tools={},
-            recommended_subagents=['go-tester', 'go-reviewer', 'concurrency-checker'],
-            project_structure={}
+            tools=tools,
+            recommended_subagents=recommended_subagents,
+            project_structure=project_structure
         )
 
     def _detect_flutter(self) -> Optional[DetectionResult]:
-        """Detect Flutter projects."""
+        """
+        Detect Flutter projects.
+
+        Detection criteria:
+        - pubspec.yaml with flutter SDK
+        - Dart files with Flutter imports
+        - Flutter project structure (lib/, android/, ios/)
+        - State management libraries detection
+        - Testing frameworks detection
+
+        Returns:
+            DetectionResult if Flutter project detected, None otherwise
+        """
         pubspec = self.project_path / "pubspec.yaml"
         if not pubspec.exists():
             return None
 
-        confidence = 0.8
-        indicators = ["pubspec.yaml exists: +0.8"]
+        confidence = 0.0
+        indicators = []
+        tools = {}
+        version = None
+
+        # Parse pubspec.yaml
+        try:
+            import yaml
+            with open(pubspec, 'r', encoding='utf-8') as f:
+                pubspec_data = yaml.safe_load(f)
+
+            # Check for flutter SDK
+            if not pubspec_data or 'flutter' not in pubspec_data:
+                # Has pubspec.yaml but no flutter - likely a Dart CLI project
+                return None
+
+            confidence += 0.6
+            indicators.append("pubspec.yaml with flutter SDK: +0.6")
+
+            # Check dependencies
+            deps = pubspec_data.get('dependencies', {})
+            dev_deps = pubspec_data.get('dev_dependencies', {})
+            all_deps = {**deps, **dev_deps}
+
+            # Flutter SDK version
+            flutter_config = pubspec_data.get('flutter', {})
+            if isinstance(flutter_config, dict) and 'sdk' in flutter_config:
+                version = "flutter"
+
+            # State management
+            if 'provider' in deps:
+                tools.setdefault('state-management', []).append('provider')
+            if 'riverpod' in deps or 'flutter_riverpod' in deps:
+                tools.setdefault('state-management', []).append('riverpod')
+            if 'bloc' in deps or 'flutter_bloc' in deps:
+                tools.setdefault('state-management', []).append('bloc')
+            if 'get' in deps or 'get_it' in deps:
+                tools.setdefault('state-management', []).append('getx' if 'get' in deps else 'get_it')
+            if 'mobx' in deps or 'flutter_mobx' in deps:
+                tools.setdefault('state-management', []).append('mobx')
+
+            # HTTP clients
+            if 'dio' in deps:
+                tools.setdefault('http-client', []).append('dio')
+            if 'http' in deps:
+                tools.setdefault('http-client', []).append('http')
+
+            # Database/Storage
+            if 'sqflite' in deps:
+                tools.setdefault('database', []).append('sqflite')
+            if 'hive' in deps or 'hive_flutter' in deps:
+                tools.setdefault('database', []).append('hive')
+            if 'shared_preferences' in deps:
+                tools.setdefault('storage', []).append('shared_preferences')
+
+            # Navigation
+            if 'go_router' in deps:
+                tools.setdefault('navigation', []).append('go_router')
+            if 'auto_route' in deps:
+                tools.setdefault('navigation', []).append('auto_route')
+
+            # Testing
+            if 'flutter_test' in dev_deps:
+                tools.setdefault('testing', []).append('flutter_test')
+            if 'mockito' in dev_deps:
+                tools.setdefault('testing', []).append('mockito')
+            if 'integration_test' in dev_deps:
+                tools.setdefault('testing', []).append('integration_test')
+
+            # UI libraries
+            if 'google_fonts' in deps:
+                tools.setdefault('ui', []).append('google_fonts')
+
+        except (yaml.YAMLError, ImportError) as e:
+            # If YAML parsing fails or yaml module not available, use basic detection
+            try:
+                with open(pubspec, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    if 'flutter:' in content or 'sdk: flutter' in content:
+                        confidence += 0.6
+                        indicators.append("pubspec.yaml with flutter reference: +0.6")
+                    else:
+                        return None
+            except UnicodeDecodeError:
+                return None
+
+        # Check for Flutter project structure
+        has_lib = (self.project_path / 'lib').is_dir()
+        has_android = (self.project_path / 'android').is_dir()
+        has_ios = (self.project_path / 'ios').is_dir()
+        has_test = (self.project_path / 'test').is_dir()
+
+        if has_lib:
+            confidence += 0.15
+            indicators.append("lib/ directory: +0.15")
+        if has_android and has_ios:
+            confidence += 0.1
+            indicators.append("android/ and ios/ directories: +0.1")
+        elif has_android or has_ios:
+            confidence += 0.05
+            indicators.append("platform directory exists: +0.05")
+
+        # Check for main.dart
+        main_dart = self.project_path / 'lib' / 'main.dart'
+        if main_dart.exists():
+            confidence += 0.1
+            indicators.append("lib/main.dart exists: +0.1")
+
+            # Check for Flutter widgets in main.dart
+            try:
+                with open(main_dart, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    flutter_patterns = ['import \'package:flutter', 'MaterialApp', 'StatelessWidget', 'StatefulWidget', 'runApp']
+
+                    for pattern in flutter_patterns:
+                        if pattern in content:
+                            confidence += 0.02
+                            indicators.append(f"Flutter pattern '{pattern}' in main.dart: +0.02")
+                            break
+
+            except (UnicodeDecodeError, PermissionError):
+                pass
+
+        # Check for Dart files with Flutter imports
+        dart_files = list(self.project_path.glob("lib/**/*.dart"))
+
+        flutter_widget_count = 0
+        for dart_file in dart_files[:10]:
+            try:
+                with open(dart_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    if 'import \'package:flutter' in content or 'import "package:flutter' in content:
+                        flutter_widget_count += 1
+
+            except (UnicodeDecodeError, PermissionError):
+                continue
+
+        if flutter_widget_count > 0:
+            confidence += 0.05
+            indicators.append(f"{flutter_widget_count} files with Flutter imports: +0.05")
+
+        # Minimum confidence threshold
+        if confidence < 0.6:
+            return None
+
+        # Recommended subagents
+        recommended_subagents = ['flutter-developer', 'widget-reviewer']
+
+        if tools.get('state-management'):
+            if 'provider' in tools['state-management']:
+                recommended_subagents.append('provider-specialist')
+            elif 'riverpod' in tools['state-management']:
+                recommended_subagents.append('riverpod-specialist')
+            elif 'bloc' in tools['state-management']:
+                recommended_subagents.append('bloc-specialist')
+
+        if 'flutter_test' in tools.get('testing', []):
+            recommended_subagents.append('flutter-tester')
+
+        if tools.get('database'):
+            if 'sqflite' in tools['database']:
+                recommended_subagents.append('sqflite-specialist')
+            elif 'hive' in tools['database']:
+                recommended_subagents.append('hive-specialist')
+
+        # Project structure
+        project_structure = {
+            'has_lib': has_lib,
+            'has_android': has_android,
+            'has_ios': has_ios,
+            'has_test': has_test,
+            'has_main_dart': main_dart.exists(),
+            'dart_files_count': len(dart_files)
+        }
 
         return DetectionResult(
             framework="flutter",
+            version=version,
             language="dart",
-            confidence=confidence,
+            confidence=min(confidence, 1.0),
             indicators=indicators,
-            tools={},
-            recommended_subagents=['flutter-tester', 'widget-reviewer'],
-            project_structure={}
+            tools=tools,
+            recommended_subagents=recommended_subagents,
+            project_structure=project_structure
         )
 
     def _detect_vanilla_php_web(self) -> Optional[DetectionResult]:

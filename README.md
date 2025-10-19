@@ -32,7 +32,7 @@ Detected: FastAPI + SQLAlchemy + pytest
 → Generated: api-developer, api-tester, sqlalchemy-specialist
 ```
 
-**Supported Frameworks** (10): Next.js, React, Vue, FastAPI, Django, Flask, Vanilla PHP/Web, Python ML/CV, iOS Swift, Go, Flutter
+**Supported Frameworks** (11): Next.js, React, Vue, FastAPI, Django, Flask, Vanilla PHP/Web, Python ML/CV, iOS Swift, Go, Flutter
 
 #### 2. 📊 Phase-Adaptive Review ⭐ **Industry First**
 
@@ -154,8 +154,8 @@ Review standards automatically adjust:
 
 | Feature | Adaptive Claude Agents | GitHub Copilot | Cursor |
 |---------|------------------------|----------------|--------|
-| Auto-detect tech stack | ✅ 10 frameworks | ❌ | ❌ |
-| Generate specialized agents | ✅ 13 templates | ❌ | ❌ |
+| Auto-detect tech stack | ✅ 11 frameworks | ❌ | ❌ |
+| Generate specialized agents | ✅ 15 templates | ❌ | ❌ |
 | **Phase-adaptive review** | ✅ **Industry first** | ❌ | ❌ |
 | Works across all projects | ✅ Global Skills | ❌ | ❌ |
 | Open source | ✅ MIT | ❌ | ❌ |
@@ -170,14 +170,15 @@ Review standards automatically adjust:
 | **Vanilla PHP/Web** | 100% | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ |
 | **Python ML/CV** | 100% | python-ml-developer, cv-specialist | ✅ |
 | **Vue** | 90% | (Next.js templates) | ✅ |
+| **Go** | 85% | go-developer, go-reviewer, concurrency-checker | ✅ |
+| **Flutter** | 80% | flutter-developer, widget-reviewer | ✅ |
 | **FastAPI** | 80% | api-developer, api-tester, sqlalchemy-specialist | ✅ |
 | **React** | 80% | (Next.js templates) | ✅ |
 | **Django** | 80% | (FastAPI templates) | ✅ |
 | **iOS Swift** | 80% | swift-developer | ✅ |
 | **Flask** | 70% | (FastAPI templates) | ✅ |
-| **Go/Flutter** | Planned | TBD | Post-beta |
 
-**Total**: 9/10 frameworks tested (90%), 13 specialized templates (~228KB)
+**Total**: 11/11 frameworks tested (100%), 15 specialized templates (~260KB)
 
 **Legend**: ✅ = Validated in Week 2 testing
 
