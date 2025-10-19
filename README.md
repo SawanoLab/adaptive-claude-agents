@@ -1,6 +1,6 @@
 # Adaptive Claude Agents
 
-> **Status**: Beta Testing 🚀
+> **Status**: Week 3 - Alpha Testing 🧪 | Public Beta: Oct 27-28 🚀
 >
 > Auto-generate project-specific Claude Code subagents that adapt to your development phase.
 
