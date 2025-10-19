@@ -1,0 +1,178 @@
+# Production Phase Configuration
+# Focus: Perfection - code represents the product quality
+
+phase_name: production
+description: "Production-ready code - highest quality standards apply"
+review_rigor: 10  # Maximum rigor (scale 1-10)
+
+rules:
+  # Type Safety - strict enforcement
+  type_safety:
+    enabled: true
+    strictness: strict
+    allow_any: false  # No type shortcuts
+    require_type_annotations: true  # All functions
+    require_exhaustive_checks: true
+    require_strict_mode: true
+    message: "No type shortcuts - full type safety required everywhere"
+
+  # Testing - comprehensive coverage
+  testing:
+    required: true
+    min_coverage: 80
+    test_critical_paths: true
+    test_edge_cases: true
+    test_error_conditions: true
+    require_unit_tests: true
+    require_integration_tests: true
+    require_e2e_tests: true  # For user-facing features
+    message: "Comprehensive test coverage mandatory - unit, integration, and e2e tests"
+
+  # Documentation - complete
+  documentation:
+    require_docstrings: true  # All public APIs
+    require_readme: true
+    require_comments: high  # All complex logic
+    require_api_docs: true
+    require_changelog: true
+    require_contributing_guide: true
+    message: "Full documentation required - README, API docs, CHANGELOG, comments"
+
+  # Code Quality - production grade
+  code_quality:
+    enforce_linting: true
+    enforce_formatting: true
+    enforce_complexity_limits: true  # Max cyclomatic complexity: 10
+    allow_todo_comments: false  # Convert to issues
+    allow_console_logs: false  # Use proper logging
+    allow_hardcoded_values: false  # Must use config
+    allow_duplicate_code: false  # DRY principle
+    require_code_review: true
+    message: "Production-grade code quality - no shortcuts"
+
+  # Security - full audit
+  security:
+    check_basic_vulnerabilities: true
+    check_sql_injection: true
+    check_xss: true
+    check_csrf: true
+    check_authentication: true
+    check_authorization: true
+    check_input_validation: true
+    check_sensitive_data: true
+    check_dependency_vulnerabilities: true
+    require_security_headers: true
+    require_rate_limiting: true
+    require_audit_logging: true
+    message: "Full security audit required - production code must be secure"
+
+  # Performance - optimized
+  performance:
+    check_n_plus_1: true
+    check_memory_leaks: true
+    check_algorithm_complexity: true
+    check_bundle_size: true
+    require_caching: true  # Where applicable
+    require_lazy_loading: true
+    require_optimization: true
+    monitor_response_times: true
+    message: "Performance optimization mandatory - fast, efficient code"
+
+  # Error Handling - robust
+  error_handling:
+    require_try_catch: true  # All risky operations
+    require_error_messages: true
+    require_logging: true
+    require_monitoring: true
+    require_graceful_degradation: true
+    require_retry_logic: true  # For external services
+    message: "Robust error handling with monitoring and graceful degradation"
+
+  # Accessibility - WCAG compliance
+  accessibility:
+    check_wcag_compliance: true  # WCAG 2.1 AA
+    require_aria_labels: true
+    require_keyboard_navigation: true
+    require_screen_reader_support: true
+    check_color_contrast: true
+    message: "WCAG 2.1 AA compliance required for all user-facing features"
+
+subagent_behavior:
+  review_tone: "thorough"
+
+  focus_on:
+    - "Is it production-ready?"
+    - "Are all edge cases handled?"
+    - "Is it secure against known vulnerabilities?"
+    - "Is it performant and optimized?"
+    - "Is it accessible to all users?"
+    - "Is it maintainable and well-documented?"
+    - "Does it follow best practices?"
+    - "Is monitoring and observability in place?"
+
+  block_merge_on:
+    - "Any security vulnerability"
+    - "Test coverage below 80%"
+    - "Missing error handling"
+    - "Performance regressions"
+    - "Accessibility violations (WCAG 2.1 AA)"
+    - "Undocumented public APIs"
+    - "Exposed secrets or credentials"
+    - "TODO comments (must be issues)"
+    - "Linting or formatting errors"
+    - "Type safety violations"
+
+  require_approval_for:
+    - "Database schema changes"
+    - "API contract changes"
+    - "Dependency updates (especially major versions)"
+    - "Configuration changes"
+    - "Infrastructure changes"
+
+  mandatory_checks:
+    - "Security scan passes"
+    - "All tests pass"
+    - "Performance benchmarks meet thresholds"
+    - "Accessibility audit passes"
+    - "Code review approved"
+    - "Documentation updated"
+
+example_review_output: |
+  # Review: Production Phase
+
+  ## Blocking Issues 🔴
+  🔴 SECURITY: Exposed API key in `config.ts` (line 23)
+  🔴 PERFORMANCE: N+1 query in `getUserPosts` - causes 500ms delay
+  🔴 TESTING: Coverage dropped to 72% (below 80% threshold)
+  🔴 ACCESSIBILITY: Missing ARIA labels on custom dropdown component
+
+  ## Required Changes ❌
+  ❌ Missing error boundary for async component `UserDashboard`
+  ❌ TODO comment on line 156 - create GitHub issue or resolve
+  ❌ Undocumented function `processPayment` - add JSDoc
+  ❌ Hardcoded URL in `api/client.ts` - move to environment config
+  ❌ Console.log statement on line 89 - use proper logger
+
+  ## Code Quality Issues ⚠️
+  ⚠️ Function `calculateDiscount` has cyclomatic complexity of 15 (limit: 10)
+  ⚠️ Duplicate code in `validateEmail` and `validateUsername` - extract common logic
+  ⚠️ Missing error handling for `fetch` call in `submitForm`
+  ⚠️ Type `any` used in `parseResponse` - define proper interface
+
+  ## Performance Concerns 💡
+  💡 Consider lazy loading the chart library (saves 120KB bundle size)
+  💡 Add caching for expensive `getRecommendations` call
+  💡 Implement virtualization for long user list (>100 items)
+
+  ## Security Recommendations 🔒
+  🔒 Add rate limiting to login endpoint
+  🔒 Implement CSRF protection for state-changing operations
+  🔒 Add security headers (CSP, X-Frame-Options, etc.)
+
+  ## Documentation Gaps 📚
+  📚 CHANGELOG.md not updated with recent changes
+  📚 README missing deployment instructions
+  📚 API endpoint `/api/users/:id/delete` not documented
+
+  **Status**: ❌ BLOCKED - resolve all blocking issues before deployment
+  **Recommendation**: Do not merge until all 🔴 issues are resolved

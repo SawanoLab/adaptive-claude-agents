@@ -1,0 +1,112 @@
+# Prototype Phase Configuration
+# Focus: Speed and iteration - prioritize working code over perfection
+
+phase_name: prototype
+description: "Early exploration phase - prioritize speed over perfection"
+review_rigor: 3  # Low rigor (scale 1-10)
+
+rules:
+  # Type Safety - minimal enforcement
+  type_safety:
+    enabled: false
+    strictness: minimal
+    allow_any: true
+    require_type_annotations: false
+    message: "TypeScript 'any' and loose typing acceptable during prototyping"
+
+  # Testing - optional
+  testing:
+    required: false
+    min_coverage: 0
+    test_critical_paths: false
+    test_edge_cases: false
+    require_unit_tests: false
+    require_integration_tests: false
+    message: "Tests optional - focus on proving concept works"
+
+  # Documentation - minimal
+  documentation:
+    require_docstrings: false
+    require_readme: false
+    require_comments: false
+    require_api_docs: false
+    require_changelog: false
+    message: "Inline comments for clarity, but no formal docs needed"
+
+  # Code Quality - relaxed standards
+  code_quality:
+    enforce_linting: false
+    enforce_formatting: false
+    enforce_complexity_limits: false
+    allow_todo_comments: true
+    allow_console_logs: true
+    allow_hardcoded_values: true
+    allow_duplicate_code: true
+    message: "Code quality not priority - working code is priority"
+
+  # Security - deferred
+  security:
+    check_basic_vulnerabilities: false
+    check_sql_injection: false
+    check_xss: false
+    check_csrf: false
+    check_authentication: false
+    check_authorization: false
+    check_input_validation: false
+    check_sensitive_data: false
+    message: "Security review deferred to later phases"
+
+  # Performance - not a concern
+  performance:
+    check_n_plus_1: false
+    check_memory_leaks: false
+    check_algorithm_complexity: false
+    check_bundle_size: false
+    require_caching: false
+    require_optimization: false
+    message: "Performance optimization deferred"
+
+  # Error Handling - basic only
+  error_handling:
+    require_try_catch: false
+    require_error_messages: false
+    require_logging: false
+    require_graceful_degradation: false
+    message: "Basic error handling sufficient"
+
+subagent_behavior:
+  review_tone: "encouraging"
+
+  focus_on:
+    - "Does it work?"
+    - "Is the core concept sound?"
+    - "Any obvious bugs that break functionality?"
+
+  ignore:
+    - "Code style and formatting"
+    - "Performance optimization"
+    - "Comprehensive testing"
+    - "Documentation"
+    - "Type safety (unless causing runtime errors)"
+    - "Security concerns"
+    - "Edge cases"
+
+  suggestions_only_for:
+    - "Critical bugs that prevent core functionality"
+    - "Major logic errors"
+    - "Breaking runtime errors"
+
+example_review_output: |
+  # Review: Prototype Phase
+
+  ## Functionality Check
+  ✅ Core concept works
+  ✅ No critical bugs found
+  ✅ Main workflow functions as expected
+
+  ## Notes
+  - Consider adding error handling once feature stabilizes
+  - TODO comments are fine for now
+  - Hardcoded values acceptable at this stage
+
+  **Status**: Ready for further prototyping

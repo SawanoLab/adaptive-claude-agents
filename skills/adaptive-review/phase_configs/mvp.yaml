@@ -1,0 +1,124 @@
+# MVP Phase Configuration
+# Focus: Core features working reliably - balance speed with basic quality
+
+phase_name: mvp
+description: "Building MVP - balance speed with basic quality standards"
+review_rigor: 6  # Moderate rigor (scale 1-10)
+
+rules:
+  # Type Safety - moderate enforcement
+  type_safety:
+    enabled: true
+    strictness: moderate
+    allow_any: limited  # Only in non-critical paths
+    require_type_annotations: true  # For public APIs
+    message: "Use proper types for core features; 'any' allowed in utilities only"
+
+  # Testing - basic coverage required
+  testing:
+    required: true
+    min_coverage: 50
+    test_critical_paths: true
+    test_edge_cases: false  # Can wait
+    require_unit_tests: true  # For core features
+    require_integration_tests: false  # Optional
+    message: "Test main workflows and critical paths; edge cases can wait"
+
+  # Documentation - public APIs only
+  documentation:
+    require_docstrings: true  # For public APIs only
+    require_readme: true
+    require_comments: moderate  # Complex logic only
+    require_api_docs: false  # Can be informal
+    require_changelog: false
+    message: "Document public APIs and setup steps"
+
+  # Code Quality - basic standards
+  code_quality:
+    enforce_linting: true
+    enforce_formatting: true
+    enforce_complexity_limits: false  # Not yet
+    allow_todo_comments: true
+    allow_console_logs: false  # Use proper logging
+    allow_hardcoded_values: limited  # Move to config where practical
+    allow_duplicate_code: limited
+    message: "Basic code quality standards apply"
+
+  # Security - basic checks mandatory
+  security:
+    check_basic_vulnerabilities: true
+    check_sql_injection: true
+    check_xss: true
+    check_csrf: false  # Production concern
+    check_authentication: true
+    check_authorization: true
+    check_input_validation: true
+    check_sensitive_data: true  # No exposed secrets
+    message: "Basic security is mandatory - no exposed credentials, SQL injection, XSS"
+
+  # Performance - avoid obvious issues
+  performance:
+    check_n_plus_1: true  # For database queries
+    check_memory_leaks: false  # Not yet
+    check_algorithm_complexity: false
+    check_bundle_size: false
+    require_caching: false
+    require_optimization: false
+    message: "Avoid obvious performance pitfalls (N+1 queries)"
+
+  # Error Handling - basic coverage
+  error_handling:
+    require_try_catch: true  # For I/O and external calls
+    require_error_messages: true
+    require_logging: true
+    require_graceful_degradation: false
+    message: "Proper error handling for user-facing features"
+
+subagent_behavior:
+  review_tone: "constructive"
+
+  focus_on:
+    - "Do core features work reliably?"
+    - "Are there basic security issues?"
+    - "Is it testable and tested?"
+    - "Can others understand the code?"
+    - "Is error handling adequate?"
+
+  flag_issues:
+    - "Missing error handling in I/O operations"
+    - "SQL injection risks"
+    - "XSS vulnerabilities"
+    - "Broken authentication or authorization"
+    - "Untested critical paths"
+    - "Exposed secrets or credentials"
+
+  suggest_improvements:
+    - "Type safety in core modules"
+    - "Basic documentation for public APIs"
+    - "Logging instead of console.log"
+    - "Configuration instead of hardcoded values"
+    - "Error messages for user-facing errors"
+
+example_review_output: |
+  # Review: MVP Phase
+
+  ## Critical Issues
+  ❌ Missing authentication check in `/api/delete-user`
+  ❌ SQL injection vulnerability in search endpoint (line 45)
+
+  ## Required Changes
+  ⚠️ Add error handling for file upload operation
+  ⚠️ Replace `any` type in UserService with proper interface
+  ⚠️ Add tests for login workflow (critical path)
+
+  ## Suggestions
+  💡 Consider adding logging for failed login attempts
+  💡 Extract hardcoded API URL to config file
+  💡 Add JSDoc comments for UserService public methods
+
+  ## Acceptable
+  ✅ Code formatting and linting passes
+  ✅ Basic error handling present
+  ✅ No exposed credentials
+
+  **Status**: Needs fixes before merging
