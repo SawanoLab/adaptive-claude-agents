@@ -157,16 +157,22 @@ Review standards automatically adjust:
 
 ## 📦 Supported Frameworks
 
-| Category | Frameworks | Templates |
-|----------|------------|-----------|
-| **Frontend** | Next.js, React, Vue | 1 template |
-| **Backend** | FastAPI, Django, Flask | 3 templates (FastAPI) |
-| **Web** | Vanilla PHP/JavaScript | 4 templates |
-| **ML/CV** | Python ML, Computer Vision | 2 templates |
-| **Mobile** | iOS Swift, Flutter | 1 template (Swift) |
-| **Other** | Go | 1 template |
+| Framework | Detection Confidence | Templates | Tested |
+|-----------|---------------------|-----------|--------|
+| **Next.js** | 100% | nextjs-tester | ✅ |
+| **Vanilla PHP/Web** | 100% | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ |
+| **Python ML/CV** | 100% | python-ml-developer, cv-specialist | ✅ |
+| **Vue** | 90% | (Next.js templates) | ✅ |
+| **FastAPI** | 80% | api-developer, api-tester, sqlalchemy-specialist | ✅ |
+| **React** | 80% | (Next.js templates) | ✅ |
+| **Django** | 80% | (FastAPI templates) | ✅ |
+| **iOS Swift** | 80% | swift-developer | ✅ |
+| **Flask** | 70% | (FastAPI templates) | ✅ |
+| **Go/Flutter** | Planned | TBD | Post-beta |
 
-**Total**: 10 frameworks, 13 specialized templates (~228KB)
+**Total**: 9/10 frameworks tested (90%), 13 specialized templates (~228KB)
+
+**Legend**: ✅ = Validated in Week 2 testing
 
 Want to add your framework? See [Template Request](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=template_request.md)
 

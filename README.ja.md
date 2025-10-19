@@ -157,16 +157,22 @@ $ python3 skills/adaptive-review/detect_phase.py .
 
 ## 📦 対応フレームワーク
 
-| カテゴリー | フレームワーク | テンプレート数 |
-|-----------|--------------|--------------|
-| **フロントエンド** | Next.js, React, Vue | 1テンプレート |
-| **バックエンド** | FastAPI, Django, Flask | 3テンプレート (FastAPI) |
-| **Web** | バニラPHP/JavaScript | 4テンプレート |
-| **ML/CV** | Python ML, Computer Vision | 2テンプレート |
-| **モバイル** | iOS Swift, Flutter | 1テンプレート (Swift) |
-| **その他** | Go | 1テンプレート |
+| フレームワーク | 検出精度 | テンプレート | テスト済 |
+|-----------|---------|------------|---------|
+| **Next.js** | 100% | nextjs-tester | ✅ |
+| **バニラPHP/Web** | 100% | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ |
+| **Python ML/CV** | 100% | python-ml-developer, cv-specialist | ✅ |
+| **Vue** | 90% | (Next.jsテンプレート) | ✅ |
+| **FastAPI** | 80% | api-developer, api-tester, sqlalchemy-specialist | ✅ |
+| **React** | 80% | (Next.jsテンプレート) | ✅ |
+| **Django** | 80% | (FastAPIテンプレート) | ✅ |
+| **iOS Swift** | 80% | swift-developer | ✅ |
+| **Flask** | 70% | (FastAPIテンプレート) | ✅ |
+| **Go/Flutter** | 予定 | TBD | ベータ後 |
 
-**合計**: 10フレームワーク、13専門テンプレート (~228KB)
+**合計**: 9/10フレームワークテスト済 (90%)、13専門テンプレート (~228KB)
+
+**凡例**: ✅ = Week 2テストで検証済み
 
 新しいフレームワークを追加したい場合: [テンプレートリクエスト](https://github.com/SawanoLab/adaptive-claude-agents/issues/new?template=template_request.md)
 

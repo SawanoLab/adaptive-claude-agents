@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/SawanoLab/adaptive-claude-agents/ma
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Adaptive Claude Agents Installation
-  Version: 1.0.0-beta
+  Version: 0.4.0-beta
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✓ System check passed
@@ -58,16 +58,23 @@ cd adaptive-claude-agents
 
 ## Step 2: Analyze Your Project (2 minutes)
 
-### Open Your Project in Claude Code
+### Navigate to Your Project
 
-1. Open Claude Code
-2. Navigate to any project (Next.js, FastAPI, PHP, etc.)
+```bash
+cd /path/to/your/project  # Next.js, FastAPI, PHP, etc.
+```
 
 ### Run Project Analysis
 
-In Claude Code, type:
+**Method 1: Via Skills Directory**
 
-> "Analyze my project and generate appropriate subagents"
+```bash
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" .
+```
+
+**Method 2: Ask Claude Code** (if project-analyzer skill is configured)
+
+> "Run the project analyzer skill to detect my tech stack and generate subagents"
 
 **What happens**:
 
@@ -226,20 +233,20 @@ curl -fsSL https://raw.githubusercontent.com/SawanoLab/adaptive-claude-agents/ma
 
 ## Supported Frameworks
 
-| Framework | Templates | Status |
-|-----------|-----------|--------|
-| **Next.js** | tester | ✅ |
-| **Vanilla PHP/Web** | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ |
-| **FastAPI** | api-developer, api-tester, sqlalchemy-specialist | ✅ |
-| **Python ML/CV** | python-ml-developer, cv-specialist | ✅ |
-| **iOS Swift** | swift-developer | ✅ |
-| **React** | Basic detection | 🚧 |
-| **Vue** | Basic detection | 🚧 |
-| **Django** | Basic detection | 🚧 |
-| **Flask** | Basic detection | 🚧 |
-| **Flutter** | Basic detection | 🚧 |
+| Framework | Detection | Templates Available | Tested |
+|-----------|-----------|---------------------|--------|
+| **Next.js** | ✅ 100% | tester | ✅ Week 2 |
+| **Vanilla PHP/Web** | ✅ 100% | php-developer, playwright-tester, vanilla-js-developer, mysql-specialist | ✅ Week 2 |
+| **FastAPI** | ✅ 80% | api-developer, api-tester, sqlalchemy-specialist | ✅ Week 2 |
+| **React** | ✅ 80% | (uses Next.js tester for now) | ✅ Week 2 |
+| **Vue** | ✅ 90% | (uses Next.js tester for now) | ✅ Week 2 |
+| **Django** | ✅ 80% | (uses FastAPI templates for now) | ✅ Week 2 |
+| **Flask** | ✅ 70% | (uses FastAPI templates for now) | ✅ Week 2 |
+| **Python ML/CV** | ✅ 100% | python-ml-developer, cv-specialist | ✅ Week 2 |
+| **iOS Swift** | ✅ 80% | swift-developer | ✅ Week 2 |
+| **Go/Flutter** | ⏳ Planned | TBD | Post-beta |
 
-**Total**: 10 frameworks detected, 13 specialized templates
+**Total**: 9/10 frameworks tested (90%), 13 specialized templates
 
 ---
 
