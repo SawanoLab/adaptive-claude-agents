@@ -689,5 +689,225 @@ Found a better pattern? Update this document:
 
 ---
 
-**Last Updated**: 2025-01-19
+## Tool Access Policy (2025)
+
+### Principle: Least Privilege
+
+Grant only the minimum set of tools required for each subagent's role. This improves security, performance, and clarity of responsibility.
+
+### Tool Access by Agent Role
+
+#### Browser Testing Agents
+
+**chrome-devtools-tester**:
+```yaml
+tools: [mcp__chrome-devtools__*]
+rationale: Chrome DevTools Protocol for performance & debugging
+scope: Read-only browser inspection, performance traces
+```
+
+**playwright-tester**:
+```yaml
+tools: [mcp__playwright__*, Read, Write, Edit, Bash]
+rationale: Cross-browser E2E automation & test generation
+scope: Browser automation, test file creation, test execution
+```
+
+#### Developer Agents
+
+**[framework]-developer** (e.g., nextjs-developer, fastapi-developer):
+```yaml
+tools: [Read, Write, Edit, mcp__serena__replace_symbol_body, mcp__serena__insert_after_symbol]
+rationale: Code generation and modification
+scope: Create/modify code files, use symbol-level edits
+```
+
+#### Tester Agents
+
+**[framework]-tester** (e.g., nextjs-tester, api-tester):
+```yaml
+tools: [Read, Write, Bash]
+rationale: Test creation and execution
+scope: Read code, write tests, run test commands
+```
+
+#### Specialist Agents
+
+**[domain]-specialist** (e.g., sqlalchemy-specialist, cv-specialist):
+```yaml
+tools: [Read, mcp__serena__find_symbol, mcp__serena__get_symbols_overview]
+rationale: Deep analysis and recommendations
+scope: Read code structure, provide guidance (no modifications)
+```
+
+#### Reviewer/Analyst Agents
+
+**[framework]-reviewer**:
+```yaml
+tools: [Read, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols]
+rationale: Code review and quality analysis
+scope: Read-only, understand dependencies
+```
+
+### Tool Selection Decision Tree
+
+```
+Need to modify code?
+├─ Yes → Write/Edit + serena edit tools
+└─ No → Read-only tools
+
+Need browser interaction?
+├─ Chrome only → mcp__chrome-devtools__*
+└─ Cross-browser → mcp__playwright__*
+
+Need code analysis?
+├─ Symbol-level → serena find/overview
+└─ Text-level → Read + grep patterns
+
+Need execution?
+├─ Tests → Bash (test commands only)
+├─ Build → Bash (build commands only)
+└─ General → Avoid if possible
+```
+
+### Security Considerations
+
+**Never grant**:
+- Write access to read-only agents
+- Bash access without clear justification
+- All tools by default (be explicit)
+
+**Always document**:
+- Why each tool is needed
+- What scope it will be used for
+- Security implications if any
+
+### Example: Secure Template
+
+```yaml
+---
+name: code-reviewer
+description: Security-focused code review specialist
+tools: [Read, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols]
+# Explicitly NO Write/Edit - review only
+---
+
+You are a **read-only code reviewer**. You MUST NOT modify code.
+
+## Tool Restrictions
+
+✅ Allowed:
+- Read files
+- Find symbols
+- Analyze dependencies
+
+❌ Forbidden:
+- Write/Edit files
+- Execute commands
+- Modify codebase
+
+If code changes are needed, report findings and recommend to user.
+```
+
+---
+
+## Web Service Testing Patterns (2025)
+
+### Auto-Workflow for UI + API Testing
+
+When users request both UI and API testing (e.g., "クリックしてAPIアクセスを検証"), automatically decompose into specialized workflows.
+
+**Pattern Recognition**:
+```
+User: "ログインボタンをクリックしてAPIアクセスを検証して"
+
+Analysis:
+- UI keywords: "ボタン", "クリック"
+- API keywords: "API", "アクセス"
+→ Sequential workflow: Browser → API
+```
+
+**Execution**:
+```
+1. chrome-devtools-tester (or playwright-tester):
+   - Verify button CSS/position
+   - Execute click event
+   - Monitor network requests
+   - Capture: POST /api/auth/login
+
+2. api-tester (auto-chained):
+   - Test endpoint independently
+   - Validate request/response
+   - Check error handling
+
+3. main-agent:
+   - Synthesize results
+   - Report comprehensive validation
+```
+
+**Delegation Announcement**:
+```
+User: "登録フォームの見た目とAPIを検証"
+
+Agent: "I'll validate the UI with Chrome DevTools, then test the API endpoint. Starting browser testing..."
+[Automatically delegates without asking permission]
+
+chrome-devtools-tester:
+✓ Form elements validated
+✓ CSS styles confirmed
+✓ Network request captured: POST /api/users/register
+
+api-tester (auto-chained):
+✓ Endpoint tested independently
+✓ Response validated
+✓ Error scenarios checked
+
+Agent: "Validation complete: UI and API both working correctly ✓"
+```
+
+### Browser Automation Selection Logic
+
+**Default: Chrome DevTools** (90% of cases)
+```
+User mentions: "性能", "パフォーマンス", "デバッグ", "Chrome"
+→ chrome-devtools-tester
+
+User mentions: "見た目", "CSS", "クリック", "ボタン" (no cross-browser)
+→ chrome-devtools-tester
+```
+
+**Escalate to Playwright** (only when needed)
+```
+User mentions: "Firefox", "Safari", "クロスブラウザ", "CI"
+→ playwright-tester
+
+User mentions: "E2E", "end-to-end", "統合テスト", "パイプライン"
+→ playwright-tester
+```
+
+**Proactive Suggestion**:
+```
+User: "ボタンのテストをして"
+
+Agent: "For Chrome-only testing, I'll use chrome-devtools-tester for optimal performance. If you need cross-browser testing (Firefox/Safari), I can use playwright-tester instead. Proceeding with Chrome DevTools..."
+```
+
+---
+
+## 2025 Framework Best Practices
+
+See [2025_BEST_PRACTICES.md](2025_BEST_PRACTICES.md) for comprehensive framework-specific guidance including:
+
+- Browser automation (Chrome DevTools vs Playwright)
+- Next.js 15 (Turbopack, App Router, ISR)
+- FastAPI (Async-first patterns)
+- Go frameworks (Gin vs Fiber vs Echo)
+- Flutter state management (Riverpod recommended)
+- Python ML/CV (PyTorch vs TensorFlow)
+- iOS Swift (SwiftUI vs UIKit hybrid)
+- React state management (Zustand recommended)
+
+---
+
+**Last Updated**: 2025-10-20
 **Next Review**: When major Claude Code update is released or significant pattern changes emerge
