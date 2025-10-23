@@ -655,66 +655,1463 @@ jobs:
 
 ## Troubleshooting
 
-### Issue: "Test timeout of 30000ms exceeded"
+### 1. "Test timeout of 30000ms exceeded"
 
-**Cause**: Element not appearing in time or slow page load
+**Symptom**: Test fails with timeout error, element never appears
 
-**Solution**: Increase timeout or investigate page performance
+**Common Causes**:
+- Element not appearing due to JavaScript error
+- Slow page load or network delay
+- Incorrect selector (element doesn't exist)
+- Animation blocking visibility
+
+**Solutions**:
 
 ```typescript
-// Increase test timeout
-test('slow operation', async ({ page }) => {
+// ❌ Bad: Default timeout too short for slow operation
+test('slow database query', async ({ page }) => {
+  await page.goto('/users');  // Timeout after 30s
+});
+
+// ✅ Good: Increase timeout for specific test
+test('slow database query', async ({ page }) => {
   test.setTimeout(60000);  // 60 seconds
 
-  await page.goto('/slow-page');
+  await page.goto('/users');
+  await expect(page.locator('.user-list')).toBeVisible();
 });
 
-// Or configure globally in playwright.config.ts
+// ✅ Better: Configure globally for all slow tests
+// playwright.config.ts
 export default defineConfig({
-  timeout: 60000,
+  timeout: 60000,  // 60 seconds for all tests
+
+  // Or per-project
+  projects: [
+    {
+      name: 'slow-tests',
+      testMatch: '**/slow/**/*.spec.ts',
+      timeout: 120000  // 2 minutes
+    }
+  ]
 });
 ```
 
-### Issue: "Selector resolved to hidden element"
-
-**Cause**: Element exists but not visible
-
-**Solution**: Wait for visibility or check CSS
-
+**Debugging**:
 ```typescript
-// Wait for element to be visible
-await page.getByRole('button', { name: /submit/i }).waitFor({ state: 'visible' });
+// Add verbose logging to identify bottleneck
+test('debug timeout', async ({ page }) => {
+  console.log('1. Starting navigation...');
+  await page.goto('/users');
+  console.log('2. Navigation complete');
 
-// Check if element is actually visible
-const isVisible = await page.getByRole('button').isVisible();
-console.log('Button visible:', isVisible);
+  console.log('3. Waiting for element...');
+  await page.locator('.user-list').waitFor({ timeout: 10000 });
+  console.log('4. Element found');
+});
+
+// Check if element actually exists
+test('check element', async ({ page }) => {
+  await page.goto('/users');
+
+  const element = page.locator('.user-list');
+  const count = await element.count();
+  console.log(`Found ${count} elements with selector .user-list`);
+
+  if (count === 0) {
+    console.log('Element not found! Check selector.');
+  }
+});
 ```
 
-### Issue: Session/cookies not persisting
+---
 
-**Cause**: Browser context not shared
+### 2. "Selector resolved to hidden element"
 
-**Solution**: Use `storageState` to persist authentication
+**Symptom**: `locator.click()` fails with "Element is not visible"
+
+**Common Causes**:
+- Element has `display: none` or `visibility: hidden`
+- Element is covered by another element (modal, overlay)
+- Element is outside viewport
+- Animation in progress
+
+**Solutions**:
 
 ```typescript
-// Login once and save state
-test('login', async ({ page }) => {
+// ❌ Bad: Click immediately without checking visibility
+await page.locator('.submit-button').click();  // Error: Element is not visible
+
+// ✅ Good: Wait for visibility explicitly
+await page.locator('.submit-button').waitFor({ state: 'visible' });
+await page.locator('.submit-button').click();
+
+// ✅ Better: Use action auto-wait (Playwright waits automatically)
+await page.locator('.submit-button').click();  // Auto-waits for actionability
+
+// ✅ Best: Check visibility before action
+const button = page.locator('.submit-button');
+const isVisible = await button.isVisible();
+
+if (!isVisible) {
+  console.log('Button not visible, checking CSS...');
+  const styles = await button.evaluate(el => ({
+    display: getComputedStyle(el).display,
+    visibility: getComputedStyle(el).visibility,
+    opacity: getComputedStyle(el).opacity
+  }));
+  console.log('Button styles:', styles);
+}
+
+await button.click();
+```
+
+**Handle overlays**:
+```typescript
+// Element covered by modal
+test('close modal before clicking', async ({ page }) => {
+  await page.goto('/products');
+
+  // Modal appears automatically
+  const modal = page.locator('.welcome-modal');
+  if (await modal.isVisible()) {
+    await page.locator('.modal-close').click();
+    await modal.waitFor({ state: 'hidden' });
+  }
+
+  // Now can click underlying element
+  await page.locator('.product-card').first().click();
+});
+```
+
+**Scroll into view**:
+```typescript
+// Element outside viewport
+await page.locator('.footer-link').scrollIntoViewIfNeeded();
+await page.locator('.footer-link').click();
+```
+
+---
+
+### 3. Session/cookies not persisting between tests
+
+**Symptom**: User logged in one test, but logged out in next test
+
+**Common Causes**:
+- Each test uses new browser context (default)
+- Cookies not saved between contexts
+- Session expired
+
+**Solutions**:
+
+```typescript
+// ❌ Bad: Login in every test (slow, repetitive)
+test('view profile', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel(/email/i).fill('test@example.com');
   await page.getByLabel(/password/i).fill('password123');
   await page.getByRole('button', { name: /login/i }).click();
 
+  // Now test profile
+  await page.goto('/profile');
+  await expect(page.locator('h1')).toContainText('Profile');
+});
+
+test('edit profile', async ({ page }) => {
+  // Login again! (slow)
+  await page.goto('/login');
+  await page.getByLabel(/email/i).fill('test@example.com');
+  await page.getByLabel(/password/i).fill('password123');
+  await page.getByRole('button', { name: /login/i }).click();
+
+  // Test edit
+  await page.goto('/profile/edit');
+});
+
+// ✅ Good: Login once, save state, reuse in all tests
+// tests/auth/auth.setup.ts
+import { test as setup } from '@playwright/test';
+
+setup('authenticate', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel(/email/i).fill('test@example.com');
+  await page.getByLabel(/password/i).fill('password123');
+  await page.getByRole('button', { name: /login/i }).click();
+
+  await page.waitForURL('/dashboard');
+
+  // Save authenticated state
   await page.context().storageState({ path: 'auth.json' });
 });
 
-// Use saved state in other tests
-test.use({ storageState: 'auth.json' });
+// playwright.config.ts
+export default defineConfig({
+  projects: [
+    // Setup project runs first
+    { name: 'setup', testMatch: '**/auth.setup.ts' },
 
-test('protected page', async ({ page }) => {
-  await page.goto('/dashboard');  // Already logged in
-  await expect(page).toHaveURL(/\/dashboard/);
+    // Authenticated tests use saved state
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'auth.json'
+      },
+      dependencies: ['setup']
+    }
+  ]
+});
+
+// tests/profile/view.spec.ts
+test('view profile', async ({ page }) => {
+  await page.goto('/profile');  // Already logged in!
+  await expect(page.locator('h1')).toContainText('Profile');
+});
+
+test('edit profile', async ({ page }) => {
+  await page.goto('/profile/edit');  // Still logged in!
+  await expect(page.locator('h1')).toContainText('Edit Profile');
 });
 ```
+
+**Verify session persistence**:
+```typescript
+test('session persists', async ({ page }) => {
+  // Check cookies
+  const cookies = await page.context().cookies();
+  console.log('Cookies:', cookies);
+
+  const sessionCookie = cookies.find(c => c.name === 'session_id');
+  expect(sessionCookie).toBeDefined();
+
+  // Check localStorage
+  const token = await page.evaluate(() => localStorage.getItem('auth_token'));
+  expect(token).toBeTruthy();
+});
+```
+
+---
+
+### 4. Tests pass locally but fail in CI/CD
+
+**Symptom**: All tests pass on developer machine, fail on GitHub Actions/GitLab CI
+
+**Common Causes**:
+- Timing issues (CI slower than local)
+- Missing dependencies (browsers, database)
+- Port conflicts
+- Environment variables not set
+
+**Solutions**:
+
+```typescript
+// ❌ Problem: Hardcoded waits work locally but not in CI
+test('load users', async ({ page }) => {
+  await page.goto('/users');
+  await page.waitForTimeout(2000);  // Works locally (fast), fails in CI (slow)
+  await expect(page.locator('.user-list')).toBeVisible();
+});
+
+// ✅ Solution: Use condition-based waits
+test('load users', async ({ page }) => {
+  await page.goto('/users');
+  await page.locator('.user-list').waitFor({ state: 'visible', timeout: 10000 });
+  await expect(page.locator('.user-list')).toBeVisible();
+});
+```
+
+**CI-specific configuration**:
+```typescript
+// playwright.config.ts
+export default defineConfig({
+  // Increase timeouts in CI
+  timeout: process.env.CI ? 60000 : 30000,
+
+  // Reduce workers in CI (limited resources)
+  workers: process.env.CI ? 1 : undefined,
+
+  // Retry flaky tests in CI
+  retries: process.env.CI ? 2 : 0,
+
+  // Capture more debug info in CI
+  use: {
+    trace: process.env.CI ? 'on' : 'on-first-retry',
+    screenshot: process.env.CI ? 'on' : 'only-on-failure',
+    video: process.env.CI ? 'on-first-retry' : 'off'
+  }
+});
+```
+
+**CI debugging**:
+```yaml
+# .github/workflows/e2e.yml
+- name: Run Playwright tests
+  run: npx playwright test
+
+# Upload artifacts on failure
+- uses: actions/upload-artifact@v3
+  if: failure()
+  with:
+    name: playwright-report
+    path: playwright-report/
+
+- uses: actions/upload-artifact@v3
+  if: failure()
+  with:
+    name: test-results
+    path: test-results/
+```
+
+---
+
+### 5. "locator.click(): Target closed" Error
+
+**Symptom**: Test fails with "Target closed" or "Execution context was destroyed"
+
+**Common Causes**:
+- Page navigated away before action completed
+- Element removed from DOM during action
+- Popup/new tab opened
+
+**Solutions**:
+
+```typescript
+// ❌ Problem: Element removed during action
+test('delete user', async ({ page }) => {
+  await page.goto('/users');
+
+  await page.locator('.delete-button').first().click();
+  // Error: Element removed by JavaScript after click
+});
+
+// ✅ Solution: Wait for navigation or state change
+test('delete user', async ({ page }) => {
+  await page.goto('/users');
+
+  // Wait for navigation after delete
+  await Promise.all([
+    page.waitForURL('/users?deleted=true'),
+    page.locator('.delete-button').first().click()
+  ]);
+
+  await expect(page.locator('.success-message')).toContainText('User deleted');
+});
+```
+
+**Handle new tab/window**:
+```typescript
+test('open link in new tab', async ({ context, page }) => {
+  await page.goto('/');
+
+  // Wait for new page event
+  const [newPage] = await Promise.all([
+    context.waitForEvent('page'),
+    page.locator('a[target="_blank"]').click()
+  ]);
+
+  // Work with new page
+  await newPage.waitForLoadState();
+  await expect(newPage).toHaveTitle(/External Site/);
+
+  await newPage.close();
+});
+```
+
+---
+
+### 6. File upload tests failing
+
+**Symptom**: `setInputFiles()` succeeds but file not actually uploaded
+
+**Common Causes**:
+- File path incorrect (relative vs absolute)
+- File input not accepting file type
+- Form submission not triggered
+- CSRF token missing
+
+**Solutions**:
+
+```typescript
+// ❌ Bad: Relative path may not work
+await page.locator('input[type="file"]').setInputFiles('profile.jpg');
+
+// ✅ Good: Absolute path or path from project root
+import path from 'path';
+
+await page.locator('input[type="file"]').setInputFiles(
+  path.join(__dirname, '../fixtures/profile.jpg')
+);
+
+// ✅ Better: Verify file input accepts file
+test('upload profile image', async ({ page }) => {
+  await page.goto('/profile/edit');
+
+  const fileInput = page.locator('input[type="file"]');
+
+  // Check accept attribute
+  const accept = await fileInput.getAttribute('accept');
+  console.log('Accepted file types:', accept);
+
+  // Upload file
+  await fileInput.setInputFiles(
+    path.join(__dirname, '../fixtures/profile.jpg')
+  );
+
+  // Verify filename displayed
+  await expect(page.locator('.file-name')).toContainText('profile.jpg');
+
+  // Submit form
+  await page.getByRole('button', { name: /upload/i }).click();
+
+  // Verify success
+  await expect(page.locator('.success')).toContainText('uploaded successfully');
+});
+```
+
+**Upload multiple files**:
+```typescript
+await page.locator('input[type="file"][multiple]').setInputFiles([
+  path.join(__dirname, '../fixtures/file1.pdf'),
+  path.join(__dirname, '../fixtures/file2.pdf')
+]);
+```
+
+**Programmatic upload (without file input)**:
+```typescript
+// If upload happens via drag-and-drop or JavaScript
+const buffer = await fs.promises.readFile(
+  path.join(__dirname, '../fixtures/profile.jpg')
+);
+
+// Inject file into page
+await page.evaluate(({ data, filename }) => {
+  const blob = new Blob([new Uint8Array(data)], { type: 'image/jpeg' });
+  const file = new File([blob], filename, { type: 'image/jpeg' });
+
+  // Trigger custom upload handler
+  window.handleFileUpload(file);
+}, {
+  data: Array.from(buffer),
+  filename: 'profile.jpg'
+});
+```
+
+---
+
+### 7. Tests flaky - pass/fail randomly
+
+**Symptom**: Test passes most of the time, occasionally fails with no code changes
+
+**Common Causes**:
+- Race conditions (async operations)
+- Hardcoded waits (`waitForTimeout`)
+- Network timing variability
+- Database state pollution
+
+**Solutions**:
+
+```typescript
+// ❌ Flaky: Hardcoded wait (sometimes too short)
+test('load data', async ({ page }) => {
+  await page.goto('/users');
+  await page.waitForTimeout(2000);  // Race condition!
+  await expect(page.locator('.user-item')).toHaveCount(10);
+});
+
+// ✅ Reliable: Wait for specific condition
+test('load data', async ({ page }) => {
+  await page.goto('/users');
+  await page.locator('.user-item').first().waitFor({ state: 'visible' });
+  await expect(page.locator('.user-item')).toHaveCount(10);
+});
+
+// ❌ Flaky: Assuming instant API response
+test('search users', async ({ page }) => {
+  await page.goto('/users');
+  await page.locator('input[name="search"]').fill('John');
+  // Results not loaded yet!
+  await expect(page.locator('.user-item')).toHaveCount(3);
+});
+
+// ✅ Reliable: Wait for network idle or loading indicator
+test('search users', async ({ page }) => {
+  await page.goto('/users');
+
+  await page.locator('input[name="search"]').fill('John');
+
+  // Wait for loading spinner to disappear
+  await page.locator('.loading-spinner').waitFor({ state: 'hidden', timeout: 5000 });
+
+  // Or wait for network idle
+  await page.waitForLoadState('networkidle');
+
+  await expect(page.locator('.user-item')).toHaveCount(3);
+});
+```
+
+**Identify flaky tests**:
+```bash
+# Run test 10 times to check for flakiness
+for i in {1..10}; do
+  echo "Run $i"
+  npx playwright test tests/users/search.spec.ts || echo "FAILED on run $i"
+done
+
+# Or use Playwright's repeat option
+npx playwright test --repeat-each=10 tests/users/search.spec.ts
+```
+
+**Isolate database state**:
+```typescript
+// ✅ Reset database before each test
+test.beforeEach(async () => {
+  await DatabaseHelper.reset();
+  await DatabaseHelper.seed();
+});
+
+// ✅ Use unique test data per run
+test('create user', async ({ page }) => {
+  const uniqueId = Date.now();
+  const email = `test-${uniqueId}@example.com`;
+
+  await page.goto('/users/create');
+  await page.getByLabel(/email/i).fill(email);
+  await page.getByRole('button', { name: /create/i }).click();
+
+  await expect(page.locator('.success')).toContainText('User created');
+});
+```
+
+---
+
+## Anti-Patterns
+
+### 1. ❌ Using Brittle CSS Selectors
+
+**Why it's bad**:
+- Tests break when CSS classes change (refactoring, styling updates)
+- Not semantic (doesn't reflect user intent)
+- Hard to maintain across large test suites
+
+**Problem**:
+```typescript
+// ❌ Bad: CSS class selectors (brittle)
+await page.locator('.btn-primary.btn-lg.submit-button').click();
+await page.locator('.form-group:nth-child(2) input').fill('test@example.com');
+await page.locator('#user-card-123 .delete-icon').click();
+
+// When UI refactored (Tailwind → CSS Modules), ALL tests break!
+```
+
+**Solution**:
+```typescript
+// ✅ Good: Semantic selectors (getByRole, getByLabel, getByText)
+await page.getByRole('button', { name: /submit/i }).click();
+await page.getByLabel(/email/i).fill('test@example.com');
+await page.getByRole('button', { name: /delete/i }).click();
+
+// ✅ Better: data-testid attributes for stable selectors
+// HTML: <button data-testid="submit-button">Submit</button>
+await page.getByTestId('submit-button').click();
+
+// ✅ Best: Combine semantic + fallback
+const submitButton =
+  page.getByRole('button', { name: /submit/i }) ||
+  page.getByTestId('submit-button');
+
+await submitButton.click();
+```
+
+**Selector priority**:
+```
+1. getByRole (accessibility-based, most semantic)
+2. getByLabel (for form inputs)
+3. getByPlaceholder (for form inputs without labels)
+4. getByText (for unique text content)
+5. getByTestId (for non-semantic elements, fallback)
+6. CSS selectors (last resort, avoid when possible)
+```
+
+---
+
+### 2. ❌ Testing Implementation Details Instead of User Behavior
+
+**Why it's bad**:
+- Tests coupled to code structure
+- Breaks when refactoring without changing functionality
+- Doesn't reflect actual user workflows
+
+**Problem**:
+```typescript
+// ❌ Bad: Testing internal function calls
+test('user registration calls createUser function', async ({ page }) => {
+  await page.goto('/register');
+
+  // Spy on internal function (implementation detail!)
+  await page.evaluate(() => {
+    window.__createUserCalled = false;
+    const originalCreateUser = window.createUser;
+    window.createUser = function(...args) {
+      window.__createUserCalled = true;
+      return originalCreateUser.apply(this, args);
+    };
+  });
+
+  await page.getByLabel(/email/i).fill('test@example.com');
+  await page.getByRole('button', { name: /register/i }).click();
+
+  // Assert internal function was called
+  const called = await page.evaluate(() => window.__createUserCalled);
+  expect(called).toBe(true);  // Who cares? User doesn't know about this function!
+});
+
+// ❌ Bad: Testing CSS class names
+test('button has primary class', async ({ page }) => {
+  await page.goto('/');
+
+  const button = page.locator('button');
+  const className = await button.getAttribute('class');
+
+  expect(className).toContain('btn-primary');  // Implementation detail!
+});
+```
+
+**Solution**:
+```typescript
+// ✅ Good: Test user-visible behavior
+test('user can register successfully', async ({ page }) => {
+  await page.goto('/register');
+
+  await page.getByLabel(/name/i).fill('John Doe');
+  await page.getByLabel(/email/i).fill('john@example.com');
+  await page.getByLabel(/password/i).fill('SecurePass123');
+  await page.getByRole('button', { name: /register/i }).click();
+
+  // Assert user-visible outcome
+  await expect(page).toHaveURL(/\/dashboard/);
+  await expect(page.locator('.welcome-message')).toContainText('Welcome, John');
+  await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();
+});
+
+// ✅ Good: Test visual appearance (what user sees)
+test('submit button is visually prominent', async ({ page }) => {
+  await page.goto('/register');
+
+  const button = page.getByRole('button', { name: /submit/i });
+
+  // Test computed styles (what user sees)
+  const styles = await button.evaluate(el => ({
+    backgroundColor: getComputedStyle(el).backgroundColor,
+    fontSize: getComputedStyle(el).fontSize,
+    cursor: getComputedStyle(el).cursor
+  }));
+
+  expect(styles.backgroundColor).toBe('rgb(0, 102, 204)');  // Blue
+  expect(styles.cursor).toBe('pointer');  // Clickable
+});
+```
+
+---
+
+### 3. ❌ Not Isolating Test State (Tests Depend on Each Other)
+
+**Why it's bad**:
+- Tests fail in unpredictable order
+- Hard to debug (must run all preceding tests)
+- Can't run tests in parallel
+- "Works on my machine" syndrome
+
+**Problem**:
+```typescript
+// ❌ Bad: Tests depend on execution order
+test('create user', async ({ page }) => {
+  await page.goto('/users/create');
+  await page.getByLabel(/name/i).fill('John Doe');
+  await page.getByLabel(/email/i).fill('john@example.com');
+  await page.getByRole('button', { name: /create/i }).click();
+
+  // User created in database (state pollution!)
+});
+
+test('edit user', async ({ page }) => {
+  // Assumes user from previous test exists!
+  await page.goto('/users/1/edit');
+  await page.getByLabel(/name/i).fill('Jane Doe');
+  await page.getByRole('button', { name: /save/i }).click();
+
+  await expect(page.locator('.success')).toContainText('User updated');
+});
+
+test('delete user', async ({ page }) => {
+  // Assumes user from first test (edited by second test) exists!
+  await page.goto('/users');
+  await page.getByRole('button', { name: /delete/i }).first().click();
+});
+
+// If "create user" test fails, all subsequent tests fail too!
+// If tests run in different order, all fail!
+```
+
+**Solution**:
+```typescript
+// ✅ Good: Each test sets up its own state
+test('create user', async ({ page }) => {
+  // Clean state
+  await DatabaseHelper.reset();
+
+  await page.goto('/users/create');
+  await page.getByLabel(/name/i).fill('John Doe');
+  await page.getByLabel(/email/i).fill('john@example.com');
+  await page.getByRole('button', { name: /create/i }).click();
+
+  await expect(page.locator('.success')).toContainText('User created');
+});
+
+test('edit user', async ({ page }) => {
+  // Clean state
+  await DatabaseHelper.reset();
+
+  // Create user programmatically (not via UI)
+  await DatabaseHelper.createUser({
+    id: 1,
+    name: 'John Doe',
+    email: 'john@example.com'
+  });
+
+  // Now test editing
+  await page.goto('/users/1/edit');
+  await page.getByLabel(/name/i).fill('Jane Doe');
+  await page.getByRole('button', { name: /save/i }).click();
+
+  await expect(page.locator('.success')).toContainText('User updated');
+});
+
+test('delete user', async ({ page }) => {
+  // Clean state
+  await DatabaseHelper.reset();
+
+  // Create user programmatically
+  await DatabaseHelper.createUser({
+    id: 1,
+    name: 'John Doe',
+    email: 'john@example.com'
+  });
+
+  // Now test deleting
+  await page.goto('/users');
+  await page.getByRole('button', { name: /delete/i }).first().click();
+
+  await expect(page.locator('.success')).toContainText('User deleted');
+});
+
+// ✅ Best: Use test fixtures for common setup
+test.beforeEach(async () => {
+  await DatabaseHelper.reset();
+  await DatabaseHelper.seedUsers(10);  // Standard test data
+});
+
+test('edit user from list', async ({ page }) => {
+  // Users already seeded, can test directly
+  await page.goto('/users');
+  await page.getByRole('link', { name: /edit/i }).first().click();
+});
+```
+
+---
+
+### 4. ❌ Overly Broad or Vague Assertions
+
+**Why it's bad**:
+- Tests pass when they shouldn't
+- Hard to debug failures (what actually went wrong?)
+- False sense of security
+
+**Problem**:
+```typescript
+// ❌ Bad: Vague assertions
+test('login works', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel(/email/i).fill('test@example.com');
+  await page.getByLabel(/password/i).fill('password123');
+  await page.getByRole('button', { name: /login/i }).click();
+
+  // What does "works" mean?
+  await expect(page.url()).not.toBe('/login');  // Could be error page!
+});
+
+// ❌ Bad: No assertion at all
+test('submit form', async ({ page }) => {
+  await page.goto('/contact');
+  await page.getByLabel(/message/i).fill('Hello');
+  await page.getByRole('button', { name: /send/i }).click();
+
+  // No assertion! Test always passes even if form submission failed!
+});
+
+// ❌ Bad: Overly broad text match
+test('success message shown', async ({ page }) => {
+  await page.goto('/users/create');
+  await page.getByLabel(/name/i).fill('John');
+  await page.getByRole('button', { name: /create/i }).click();
+
+  await expect(page.locator('body')).toContainText('success');  // Way too broad!
+  // Matches "User created successfully" AND "Success: Database connection failed"!
+});
+```
+
+**Solution**:
+```typescript
+// ✅ Good: Specific, actionable assertions
+test('login successful', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel(/email/i).fill('test@example.com');
+  await page.getByLabel(/password/i).fill('password123');
+  await page.getByRole('button', { name: /login/i }).click();
+
+  // Assert multiple specific outcomes
+  await expect(page).toHaveURL(/\/dashboard/);  // Correct redirect
+  await expect(page.locator('h1')).toContainText('Dashboard');  // Correct page
+  await expect(page.locator('.user-name')).toContainText('Test User');  // User info shown
+  await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();  // Logout available
+});
+
+// ✅ Good: Always assert expected outcome
+test('submit contact form', async ({ page }) => {
+  await page.goto('/contact');
+  await page.getByLabel(/message/i).fill('Hello from E2E test');
+  await page.getByRole('button', { name: /send/i }).click();
+
+  // Assert success message
+  await expect(page.locator('.alert-success')).toContainText('Message sent successfully');
+
+  // Assert form cleared
+  await expect(page.getByLabel(/message/i)).toHaveValue('');
+
+  // Assert confirmation email mentioned
+  await expect(page.locator('.info')).toContainText('check your email');
+});
+
+// ✅ Good: Narrow, specific text matches
+test('user created successfully', async ({ page }) => {
+  await page.goto('/users/create');
+  await page.getByLabel(/name/i).fill('John Doe');
+  await page.getByRole('button', { name: /create/i }).click();
+
+  // Narrow selector + specific text
+  const successAlert = page.locator('.alert-success');
+  await expect(successAlert).toContainText('User created successfully');
+  await expect(successAlert).not.toContainText('error');
+  await expect(successAlert).not.toContainText('failed');
+});
+```
+
+---
+
+### 5. ❌ Not Testing Error Scenarios
+
+**Why it's bad**:
+- Happy path works, but errors cause production issues
+- Poor user experience on failures
+- Can't verify error messages are helpful
+
+**Problem**:
+```typescript
+// ❌ Bad: Only test successful login
+test('login', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel(/email/i).fill('test@example.com');
+  await page.getByLabel(/password/i).fill('correct-password');
+  await page.getByRole('button', { name: /login/i }).click();
+
+  await expect(page).toHaveURL(/\/dashboard/);
+});
+
+// What about wrong password? Empty fields? Network error? Account locked?
+```
+
+**Solution**:
+```typescript
+// ✅ Good: Test error scenarios comprehensively
+
+test.describe('Login Error Handling', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/login');
+  });
+
+  test('empty email shows validation error', async ({ page }) => {
+    await page.getByLabel(/password/i).fill('password123');
+    await page.getByRole('button', { name: /login/i }).click();
+
+    await expect(page.locator('.error')).toContainText('Email is required');
+    await expect(page).toHaveURL(/\/login/);  // Still on login page
+  });
+
+  test('empty password shows validation error', async ({ page }) => {
+    await page.getByLabel(/email/i).fill('test@example.com');
+    await page.getByRole('button', { name: /login/i }).click();
+
+    await expect(page.locator('.error')).toContainText('Password is required');
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('invalid email format shows error', async ({ page }) => {
+    await page.getByLabel(/email/i).fill('not-an-email');
+    await page.getByLabel(/password/i).fill('password123');
+    await page.getByRole('button', { name: /login/i }).click();
+
+    await expect(page.locator('.error')).toContainText('Invalid email format');
+  });
+
+  test('wrong password shows error', async ({ page }) => {
+    await page.getByLabel(/email/i).fill('test@example.com');
+    await page.getByLabel(/password/i).fill('wrong-password');
+    await page.getByRole('button', { name: /login/i }).click();
+
+    await expect(page.locator('.alert-error')).toContainText('Invalid credentials');
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('non-existent user shows error', async ({ page }) => {
+    await page.getByLabel(/email/i).fill('nonexistent@example.com');
+    await page.getByLabel(/password/i).fill('password123');
+    await page.getByRole('button', { name: /login/i }).click();
+
+    await expect(page.locator('.alert-error')).toContainText('Invalid credentials');
+  });
+
+  test('server error shows friendly message', async ({ page }) => {
+    // Mock server error
+    await page.route('**/api/auth/login', route =>
+      route.fulfill({ status: 500, body: 'Internal Server Error' })
+    );
+
+    await page.getByLabel(/email/i).fill('test@example.com');
+    await page.getByLabel(/password/i).fill('password123');
+    await page.getByRole('button', { name: /login/i }).click();
+
+    await expect(page.locator('.alert-error')).toContainText('Something went wrong');
+    await expect(page.locator('.alert-error')).toContainText('try again');
+  });
+
+  test('network error shows offline message', async ({ page }) => {
+    // Simulate network failure
+    await page.route('**/api/auth/login', route => route.abort('failed'));
+
+    await page.getByLabel(/email/i).fill('test@example.com');
+    await page.getByLabel(/password/i).fill('password123');
+    await page.getByRole('button', { name: /login/i }).click();
+
+    await expect(page.locator('.alert-error')).toContainText('network');
+  });
+
+  test('successful login (happy path)', async ({ page }) => {
+    await page.getByLabel(/email/i).fill('test@example.com');
+    await page.getByLabel(/password/i).fill('password123');
+    await page.getByRole('button', { name: /login/i }).click();
+
+    await expect(page).toHaveURL(/\/dashboard/);
+  });
+});
+
+// Test ratio: 7 error scenarios : 1 happy path (87.5% error coverage)
+```
+
+---
+
+### 6. ❌ Ignoring Test Performance (Slow Test Suites)
+
+**Why it's bad**:
+- Developers avoid running tests (too slow)
+- Slow feedback loop in CI/CD
+- Wasted resources (time, compute)
+
+**Problem**:
+```typescript
+// ❌ Bad: Login via UI in every test (slow, 5-10s each)
+test('view profile', async ({ page }) => {
+  // 5 seconds to login via UI
+  await page.goto('/login');
+  await page.getByLabel(/email/i).fill('test@example.com');
+  await page.getByLabel(/password/i).fill('password123');
+  await page.getByRole('button', { name: /login/i }).click();
+  await page.waitForURL('/dashboard');
+
+  // 1 second for actual test
+  await page.goto('/profile');
+  await expect(page.locator('h1')).toContainText('Profile');
+});
+
+test('edit profile', async ({ page }) => {
+  // Another 5 seconds to login! (repeated)
+  await page.goto('/login');
+  await page.getByLabel(/email/i).fill('test@example.com');
+  await page.getByLabel(/password/i).fill('password123');
+  await page.getByRole('button', { name: /login/i }).click();
+  await page.waitForURL('/dashboard');
+
+  await page.goto('/profile/edit');
+});
+
+// 100 tests × 5s login = 500s (8+ minutes) wasted on login alone!
+```
+
+**Solution**:
+```typescript
+// ✅ Good: Login once, reuse state (fast, <1s per test)
+// tests/auth/auth.setup.ts
+import { test as setup } from '@playwright/test';
+
+setup('authenticate', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel(/email/i).fill('test@example.com');
+  await page.getByLabel(/password/i).fill('password123');
+  await page.getByRole('button', { name: /login/i }).click();
+  await page.waitForURL('/dashboard');
+
+  // Save state (run once)
+  await page.context().storageState({ path: 'auth.json' });
+});
+
+// playwright.config.ts
+export default defineConfig({
+  projects: [
+    { name: 'setup', testMatch: '**/auth.setup.ts' },
+    {
+      name: 'chromium',
+      use: { storageState: 'auth.json' },  // Reuse saved state
+      dependencies: ['setup']
+    }
+  ]
+});
+
+// tests/profile/view.spec.ts
+test('view profile', async ({ page }) => {
+  // <1 second (already logged in!)
+  await page.goto('/profile');
+  await expect(page.locator('h1')).toContainText('Profile');
+});
+
+test('edit profile', async ({ page }) => {
+  // <1 second (already logged in!)
+  await page.goto('/profile/edit');
+});
+
+// 100 tests × 1s = 100s (1.7 minutes) vs 500s (8+ minutes)
+// 80% faster! 🚀
+```
+
+**Optimize database operations**:
+```typescript
+// ❌ Bad: Reset entire database for each test
+test.beforeEach(async () => {
+  await exec('php artisan migrate:fresh');  // 5-10 seconds per test!
+  await exec('php artisan db:seed');
+});
+
+// ✅ Good: Only reset affected tables
+test.beforeEach(async () => {
+  await exec('mysql test_db -e "TRUNCATE TABLE users"');  // <1 second
+  await DatabaseHelper.seedUsers(10);
+});
+
+// ✅ Better: Use transactions (rollback after test)
+test.beforeEach(async () => {
+  await exec('mysql test_db -e "START TRANSACTION"');
+});
+
+test.afterEach(async () => {
+  await exec('mysql test_db -e "ROLLBACK"');  // Instant cleanup!
+});
+```
+
+---
+
+### 7. ❌ Not Running Tests Across All Browsers
+
+**Why it's bad**:
+- Browser-specific bugs missed
+- Playwright's main value (cross-browser) not utilized
+- False confidence ("works in Chrome" ≠ "works everywhere")
+
+**Problem**:
+```typescript
+// playwright.config.ts
+export default defineConfig({
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] }
+    }
+    // Only testing Chromium! Missing Firefox, WebKit bugs!
+  ]
+});
+
+// ❌ Tests pass in Chromium, but:
+// - Firefox: CSS Grid layout broken
+// - Safari: Date input format incompatible
+// - Mobile browsers: Touch events not working
+```
+
+**Solution**:
+```typescript
+// ✅ Good: Test all major browsers
+// playwright.config.ts
+export default defineConfig({
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] }
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] }
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] }
+    },
+    {
+      name: 'mobile-chrome',
+      use: { ...devices['Pixel 5'] }
+    },
+    {
+      name: 'mobile-safari',
+      use: { ...devices['iPhone 13'] }
+    }
+  ]
+});
+
+// ✅ Tests run on all browsers, catching browser-specific issues
+```
+
+**Run specific browser**:
+```bash
+# Test only Firefox
+npx playwright test --project=firefox
+
+# Test all desktop browsers
+npx playwright test --project=chromium --project=firefox --project=webkit
+
+# Test mobile only
+npx playwright test --project=mobile-chrome --project=mobile-safari
+```
+
+**Browser-specific tests**:
+```typescript
+// Skip test on specific browser if feature not supported
+test('CSS Grid layout', async ({ page, browserName }) => {
+  test.skip(browserName === 'webkit' && !isFeatureSupported, 'CSS Grid not supported on old Safari');
+
+  await page.goto('/products');
+  await expect(page.locator('.product-grid')).toHaveCSS('display', 'grid');
+});
+```
+
+---
+
+## Complete Workflows
+
+(Complete Workflows are covered in the "Testing Patterns" section above with comprehensive examples:
+- Workflow 1: Login Form Test Suite (Basic → Validation → Error → Success → Session)
+- Workflow 2: Multi-step Registration Form
+- Workflow 3: File Upload with Verification
+- Workflow 4: AJAX-driven Infinite Scroll
+- Workflow 5: Database State Management with Reset/Seed
+
+These workflows demonstrate complete end-to-end testing patterns for common {{FRAMEWORK}} application scenarios.)
+
+---
+
+## 2025-Specific Patterns
+
+### 1. Playwright Test Fixtures for Dependency Injection (2023+)
+
+**What's new**: Playwright 1.10+ introduced built-in test fixtures for dependency injection.
+
+**Why it matters**: Share setup logic, database connections, authenticated states across tests without global state.
+
+**How to use**:
+
+```typescript
+// tests/fixtures.ts
+import { test as base } from '@playwright/test';
+import { DatabaseHelper } from './helpers/database';
+
+type MyFixtures = {
+  authenticatedPage: Page;
+  database: DatabaseHelper;
+};
+
+export const test = base.extend<MyFixtures>({
+  // Auto-authenticated page fixture
+  authenticatedPage: async ({ page }, use) => {
+    await page.goto('/login');
+    await page.getByLabel(/email/i).fill('test@example.com');
+    await page.getByLabel(/password/i).fill('password123');
+    await page.getByRole('button', { name: /login/i }).click();
+    await page.waitForURL('/dashboard');
+
+    await use(page);  // Pass to test
+
+    // Cleanup
+    await page.goto('/logout');
+  },
+
+  // Database helper fixture
+  database: async ({}, use) => {
+    const db = new DatabaseHelper();
+    await db.connect();
+    await db.reset();
+
+    await use(db);  // Pass to test
+
+    // Cleanup
+    await db.disconnect();
+  }
+});
+
+// tests/profile/view.spec.ts
+import { test } from '../fixtures';
+
+test('view profile (authenticated)', async ({ authenticatedPage, database }) => {
+  // Already logged in, database ready!
+  await authenticatedPage.goto('/profile');
+  await expect(authenticatedPage.locator('h1')).toContainText('Profile');
+});
+```
+
+---
+
+### 2. API Mocking with `route()` for Deterministic Tests (2020+)
+
+**What's new**: Playwright supports request interception for mocking API responses.
+
+**Why it matters**: Test UI independently of backend, simulate errors, test offline behavior.
+
+**How to use**:
+
+```typescript
+// Mock successful API response
+test('display users from API', async ({ page }) => {
+  await page.route('**/api/users', route => {
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 1, name: 'John Doe', email: 'john@example.com' },
+        { id: 2, name: 'Jane Smith', email: 'jane@example.com' }
+      ])
+    });
+  });
+
+  await page.goto('/users');
+
+  await expect(page.locator('.user-item')).toHaveCount(2);
+  await expect(page.locator('.user-item').first()).toContainText('John Doe');
+});
+
+// Mock API error
+test('handle API error gracefully', async ({ page }) => {
+  await page.route('**/api/users', route => {
+    route.fulfill({
+      status: 500,
+      body: 'Internal Server Error'
+    });
+  });
+
+  await page.goto('/users');
+
+  await expect(page.locator('.error-message')).toContainText('Failed to load users');
+});
+
+// Mock slow API (simulate network delay)
+test('show loading spinner during API call', async ({ page }) => {
+  await page.route('**/api/users', async route => {
+    await new Promise(resolve => setTimeout(resolve, 2000));  // 2s delay
+    route.fulfill({
+      status: 200,
+      body: JSON.stringify([])
+    });
+  });
+
+  await page.goto('/users');
+
+  // Spinner should be visible during delay
+  await expect(page.locator('.loading-spinner')).toBeVisible();
+
+  // Wait for API response
+  await page.waitForLoadState('networkidle');
+
+  // Spinner should disappear
+  await expect(page.locator('.loading-spinner')).not.toBeVisible();
+});
+```
+
+---
+
+### 3. Visual Regression Testing with `toHaveScreenshot()` (2021+)
+
+**What's new**: Playwright 1.23+ added built-in visual regression testing.
+
+**Why it matters**: Detect unintended UI changes across browsers automatically.
+
+**How to use**:
+
+```typescript
+// Generate baseline screenshot (first run)
+test('homepage visual regression', async ({ page }) => {
+  await page.goto('/');
+
+  // First run: Creates baseline screenshot
+  // Subsequent runs: Compares against baseline
+  await expect(page).toHaveScreenshot('homepage.png');
+});
+
+// Component-level screenshot
+test('product card visual regression', async ({ page }) => {
+  await page.goto('/products/123');
+
+  const card = page.locator('.product-card');
+  await expect(card).toHaveScreenshot('product-card.png');
+});
+
+// Responsive design testing
+test('mobile homepage visual regression', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto('/');
+
+  await expect(page).toHaveScreenshot('homepage-mobile.png');
+});
+
+// Update baseline if intentional change
+// npx playwright test --update-snapshots
+```
+
+**Best practices**:
+- Use `maxDiffPixels` for tolerance: `await expect(page).toHaveScreenshot({ maxDiffPixels: 100 })`
+- Mask dynamic content: `await expect(page).toHaveScreenshot({ mask: [page.locator('.timestamp')] })`
+- Test across browsers to catch browser-specific rendering
+
+---
+
+### 4. Trace Viewer for Debugging (2021+)
+
+**What's new**: Playwright 1.12+ added Trace Viewer for step-by-step test replay.
+
+**Why it matters**: Debug failing tests by replaying exact actions, network requests, console logs.
+
+**How to use**:
+
+```typescript
+// playwright.config.ts
+export default defineConfig({
+  use: {
+    trace: 'on-first-retry'  // Record trace on first retry
+    // or 'retain-on-failure', 'on', 'off'
+  }
+});
+
+// Run test and view trace
+// npx playwright test
+// npx playwright show-trace trace.zip
+```
+
+**What Trace Viewer shows**:
+- DOM snapshots at each step
+- Network requests/responses
+- Console logs
+- Screenshots
+- Source code
+- Timings
+
+**Debug workflow**:
+1. Test fails → Trace automatically recorded
+2. Open trace: `npx playwright show-trace test-results/*/trace.zip`
+3. Step through actions, inspect DOM, check network
+4. Identify root cause (e.g., element selector changed, API error)
+5. Fix test
+
+---
+
+### 5. Component Testing (2023+)
+
+**What's new**: Playwright 1.37+ added experimental component testing.
+
+**Why it matters**: Test UI components in isolation without full page load.
+
+**How to use**:
+
+```typescript
+// tests/components/Button.spec.tsx (for React/Vue/Svelte)
+import { test, expect } from '@playwright/experimental-ct-react';
+import Button from './Button';
+
+test('button click triggers callback', async ({ mount }) => {
+  let clicked = false;
+
+  const component = await mount(
+    <Button onClick={() => { clicked = true; }}>
+      Click Me
+    </Button>
+  );
+
+  await component.click();
+  expect(clicked).toBe(true);
+});
+
+test('disabled button not clickable', async ({ mount }) => {
+  const component = await mount(<Button disabled>Disabled</Button>);
+
+  await expect(component).toBeDisabled();
+});
+```
+
+**Benefits**:
+- Faster than E2E (no full page load)
+- Test component props, events, states
+- Works with React, Vue, Svelte
+
+**Note**: For {{FRAMEWORK}} (vanilla PHP), full E2E testing is more common. Component testing is primarily for JavaScript frameworks.
+
+---
+
+### 6. Parallelization with Sharding (2021+)
+
+**What's new**: Playwright 1.16+ added test sharding for parallel execution across machines.
+
+**Why it matters**: Speed up CI/CD by running tests on multiple machines.
+
+**How to use**:
+
+```bash
+# Split tests into 4 shards, run shard 1
+npx playwright test --shard=1/4
+
+# GitHub Actions matrix strategy
+```
+
+```yaml
+# .github/workflows/e2e.yml
+strategy:
+  matrix:
+    shard: [1, 2, 3, 4]
+
+steps:
+  - name: Run Playwright tests
+    run: npx playwright test --shard=${{ matrix.shard }}/4
+```
+
+**Sharding benefits**:
+- 100 tests → 4 machines → 4x faster
+- Each shard runs independent subset
+- Results merged automatically
+
+**Best practices**:
+- Use sharding for large test suites (100+ tests)
+- Balance shards (Playwright does this automatically)
+- Ensure tests are isolated (no shared state)
+
+---
 
 ## References
 
@@ -723,6 +2120,9 @@ test('protected page', async ({ page }) => {
 - [Page Object Model Guide](https://playwright.dev/docs/pom)
 - [Test Fixtures](https://playwright.dev/docs/test-fixtures)
 - [CI/CD Integration](https://playwright.dev/docs/ci)
+- [Visual Regression Testing](https://playwright.dev/docs/test-snapshots)
+- [Trace Viewer](https://playwright.dev/docs/trace-viewer)
+- [Component Testing](https://playwright.dev/docs/test-components)
 
 ---
 
