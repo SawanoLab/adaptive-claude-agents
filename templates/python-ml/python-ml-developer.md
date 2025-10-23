@@ -829,46 +829,959 @@ ml-project/
 
 ## Troubleshooting
 
-### Issue: "Data leakage detected"
+### Issue 1: "Data leakage detected" (existing - expanded)
 
-**Cause**: Fitting transformers on entire dataset including test
+**Cause**: Fitting transformers on entire dataset including test set
 
-**Solution**: Always fit on training data only
+**Solution**: Always fit preprocessing on training data only
 
 ```python
-# Correct approach
-pipeline.fit(X_train, y_train)
-X_test_transformed = pipeline.transform(X_test)
+# ❌ Bad: Data leakage (test data influences training)
+from sklearn.preprocessing import StandardScaler
 
-# Wrong - causes leakage
-pipeline.fit(X_all, y_all)
+scaler = StandardScaler()
+X_all_scaled = scaler.fit_transform(X_all)  # Fits on ALL data including test
+X_train, X_test = train_test_split(X_all_scaled, test_size=0.2)
+
+# ✅ Good: Fit on train, transform on test
+X_train, X_test = train_test_split(X_all, test_size=0.2)
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)  # Fit on train only
+X_test_scaled = scaler.transform(X_test)  # Transform test with train stats
+
+# ✅ Good: Pipeline automatically handles this
+from sklearn.pipeline import Pipeline
+
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('model', LogisticRegression())
+])
+
+pipeline.fit(X_train, y_train)  # Scaler fits on train only
+predictions = pipeline.predict(X_test)  # Scaler transforms with train stats
 ```
 
-### Issue: "Model not reproducible"
+**Why**: Test set statistics (mean, std) leak into training, causing overly optimistic metrics.
 
-**Cause**: Random seeds not set or set incorrectly
+---
+
+### Issue 2: "Model not reproducible" (existing - expanded)
+
+**Cause**: Random seeds not set comprehensively
 
 **Solution**: Set all random seeds before any operations
 
 ```python
-set_seeds(42)  # Call this first
+import random
+import numpy as np
+import torch  # If using PyTorch
+
+def set_seeds(seed: int = 42):
+    """Set all random seeds for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+
+    # For PyTorch
+    if 'torch' in globals():
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    # For TensorFlow
+    try:
+        import tensorflow as tf
+        tf.random.set_seed(seed)
+    except ImportError:
+        pass
+
+# ✅ Call at start of script
+set_seeds(42)
+
+# ✅ Also set in sklearn functions
+train_test_split(X, y, random_state=42)
+model = RandomForestClassifier(random_state=42)
 ```
 
-### Issue: "Memory error with large datasets"
+**Why**: Different libraries use different RNGs. Must set all for reproducibility.
 
-**Cause**: Loading entire dataset into memory
+---
 
-**Solution**: Use chunking or polars for larger-than-memory data
+### Issue 3: "Memory error with large datasets" (existing - expanded)
+
+**Cause**: Loading entire dataset into memory at once
+
+**Solution**: Use chunking, polars, or dask for larger-than-memory data
 
 ```python
-# Use chunks
-for chunk in pd.read_csv('large_file.csv', chunksize=10000):
-    process(chunk)
+# ❌ Bad: Loads entire file into memory
+df = pd.read_csv('10GB_file.csv')  # MemoryError!
 
-# Or use polars for better performance
+# ✅ Good: Process in chunks
+def process_in_chunks(filepath: str, chunksize: int = 10_000):
+    results = []
+
+    for chunk in pd.read_csv(filepath, chunksize=chunksize):
+        # Process each chunk
+        processed = preprocess(chunk)
+        results.append(processed.mean())  # Aggregate stats
+
+    return pd.DataFrame(results)
+
+# ✅ Good: Use polars (faster, less memory)
 import polars as pl
-df = pl.read_csv('large_file.csv')
+
+df = pl.scan_csv('10GB_file.csv')  # Lazy - doesn't load yet
+result = (
+    df
+    .filter(pl.col('value') > 100)
+    .groupby('category')
+    .agg(pl.col('value').mean())
+    .collect()  # Execute query
+)
+
+# ✅ Good: Use dask for distributed computing
+import dask.dataframe as dd
+
+ddf = dd.read_csv('10GB_file.csv')
+result = ddf.groupby('category').value.mean().compute()
 ```
+
+**Why**: pandas loads entire DataFrame into RAM. Polars/dask stream and parallelize.
+
+---
+
+### Issue 4: "ValueError: Found input variables with inconsistent numbers of samples"
+
+**Cause**: X and y have different lengths after preprocessing
+
+**Solution**: Keep indices aligned or use pandas throughout
+
+```python
+# ❌ Bad: Indices get misaligned
+X = df.drop('target', axis=1)
+y = df['target']
+
+# Drop NaN rows from X only
+X = X.dropna()  # Now X and y have different lengths!
+model.fit(X, y)  # ValueError!
+
+# ✅ Good: Drop NaN from entire df before splitting
+df = df.dropna()
+X = df.drop('target', axis=1)
+y = df['target']
+model.fit(X, y)
+
+# ✅ Good: Use loc to keep indices aligned
+valid_indices = X.notna().all(axis=1)
+X = X.loc[valid_indices]
+y = y.loc[valid_indices]
+```
+
+**Why**: X and y must have same number of samples. Index alignment is critical.
+
+---
+
+### Issue 5: "Overfitting: Train accuracy 99%, test accuracy 60%"
+
+**Cause**: Model too complex or improper validation
+
+**Solution**: Regularization, cross-validation, simpler models
+
+```python
+# ❌ Bad: Overfitted model
+model = RandomForestClassifier(
+    n_estimators=1000,
+    max_depth=None,  # No depth limit
+    min_samples_split=2  # Split until pure
+)
+model.fit(X_train, y_train)
+# Train: 99%, Test: 60% - severe overfitting
+
+# ✅ Good: Regularized model
+model = RandomForestClassifier(
+    n_estimators=100,
+    max_depth=10,  # Limit depth
+    min_samples_split=20,  # Require more samples to split
+    min_samples_leaf=10,  # Require more samples per leaf
+    max_features='sqrt'  # Limit features per split
+)
+
+# ✅ Good: Use cross-validation to tune
+from sklearn.model_selection import GridSearchCV
+
+param_grid = {
+    'max_depth': [5, 10, 15],
+    'min_samples_split': [10, 20, 50],
+    'min_samples_leaf': [5, 10, 20]
+}
+
+grid_search = GridSearchCV(
+    RandomForestClassifier(n_estimators=100),
+    param_grid,
+    cv=5,  # 5-fold CV
+    scoring='f1_macro'
+)
+
+grid_search.fit(X_train, y_train)
+best_model = grid_search.best_estimator_
+```
+
+**Why**: Overfitting occurs when model memorizes training data. Regularization generalizes.
+
+---
+
+### Issue 6: "Imbalanced dataset: Model always predicts majority class"
+
+**Cause**: Class imbalance not addressed
+
+**Solution**: Resampling, class weights, or stratified sampling
+
+```python
+# ❌ Bad: Ignoring class imbalance
+# Dataset: 95% class 0, 5% class 1
+model = LogisticRegression()
+model.fit(X_train, y_train)
+# Predicts all class 0, gets 95% accuracy (useless!)
+
+# ✅ Good: Use class weights
+model = LogisticRegression(class_weight='balanced')
+model.fit(X_train, y_train)
+
+# ✅ Good: Oversample minority class (SMOTE)
+from imblearn.over_sampling import SMOTE
+
+smote = SMOTE(random_state=42)
+X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
+model.fit(X_resampled, y_resampled)
+
+# ✅ Good: Stratified sampling in split
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    stratify=y,  # Maintains class distribution
+    random_state=42
+)
+
+# ✅ Good: Use appropriate metrics (not accuracy)
+from sklearn.metrics import f1_score, roc_auc_score, classification_report
+
+y_pred = model.predict(X_test)
+print(f"F1 Score: {f1_score(y_test, y_pred, average='macro')}")
+print(f"ROC AUC: {roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])}")
+print(classification_report(y_test, y_pred))
+```
+
+**Why**: Imbalanced classes bias model toward majority. Must handle explicitly.
+
+---
+
+### Issue 7: "Training extremely slow on large datasets"
+
+**Cause**: Inefficient algorithms or lack of parallelization
+
+**Solution**: Use faster algorithms, incremental learning, or parallelization
+
+```python
+# ❌ Bad: Standard SVM on 1M rows (hours/days)
+from sklearn.svm import SVC
+
+model = SVC(kernel='rbf')
+model.fit(X_train, y_train)  # Extremely slow on large data
+
+# ✅ Good: Use SGDClassifier for large datasets
+from sklearn.linear_model import SGDClassifier
+
+model = SGDClassifier(
+    loss='hinge',  # SVM-like loss
+    max_iter=1000,
+    n_jobs=-1  # Use all CPU cores
+)
+model.fit(X_train, y_train)  # Much faster
+
+# ✅ Good: Incremental learning for huge datasets
+model = SGDClassifier()
+
+for X_batch, y_batch in batches:
+    model.partial_fit(X_batch, y_batch, classes=np.unique(y_train))
+
+# ✅ Good: Use LightGBM/XGBoost (highly optimized)
+import lightgbm as lgb
+
+model = lgb.LGBMClassifier(
+    n_estimators=100,
+    n_jobs=-1,  # Parallel training
+    verbose=-1
+)
+model.fit(X_train, y_train)  # Fast on large datasets
+
+# ✅ Good: Enable parallelization
+from sklearn.ensemble import RandomForestClassifier
+
+model = RandomForestClassifier(
+    n_estimators=100,
+    n_jobs=-1,  # Use all cores
+    verbose=1  # Show progress
+)
+```
+
+**Why**: Some algorithms don't scale. Use linear models or gradient boosting for large data.
+
+---
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Not Using Pipelines
+
+**❌ Bad**: Manual preprocessing prone to leakage
+
+```python
+# ❌ Bad: Manual steps, easy to make mistakes
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LogisticRegression
+
+# Fit scaler
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Fit PCA
+pca = PCA(n_components=10)
+X_train_pca = pca.fit_transform(X_train_scaled)
+X_test_pca = pca.transform(X_test_scaled)
+
+# Fit model
+model = LogisticRegression()
+model.fit(X_train_pca, y_train)
+
+# Predict - error-prone, must remember all steps
+X_new_scaled = scaler.transform(X_new)
+X_new_pca = pca.transform(X_new_scaled)
+predictions = model.predict(X_new_pca)
+```
+
+**✅ Good**: Use sklearn Pipeline
+
+```python
+# ✅ Good: Pipeline ensures correct order and no leakage
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LogisticRegression
+
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('pca', PCA(n_components=10)),
+    ('classifier', LogisticRegression())
+])
+
+# Single fit
+pipeline.fit(X_train, y_train)
+
+# Single predict - all steps applied automatically
+predictions = pipeline.predict(X_new)
+
+# Easy to save/load
+import joblib
+joblib.dump(pipeline, 'model_pipeline.joblib')
+```
+
+**Why it matters**: Pipelines prevent leakage, ensure reproducibility, and simplify deployment.
+
+---
+
+### Anti-Pattern 2: Using Default Hyperparameters
+
+**❌ Bad**: Not tuning hyperparameters
+
+```python
+# ❌ Bad: Default parameters rarely optimal
+model = RandomForestClassifier()  # Defaults: n_estimators=100, max_depth=None
+model.fit(X_train, y_train)
+# Suboptimal performance
+```
+
+**✅ Good**: Systematic hyperparameter tuning
+
+```python
+# ✅ Good: Grid search for best parameters
+from sklearn.model_selection import GridSearchCV
+
+param_grid = {
+    'n_estimators': [50, 100, 200],
+    'max_depth': [5, 10, 15, None],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4]
+}
+
+grid_search = GridSearchCV(
+    RandomForestClassifier(random_state=42),
+    param_grid,
+    cv=5,
+    scoring='f1_macro',
+    n_jobs=-1,
+    verbose=1
+)
+
+grid_search.fit(X_train, y_train)
+
+print(f"Best params: {grid_search.best_params_}")
+print(f"Best CV score: {grid_search.best_score_:.3f}")
+
+best_model = grid_search.best_estimator_
+
+# ✅ Good: Randomized search for large parameter spaces
+from sklearn.model_selection import RandomizedSearchCV
+from scipy.stats import randint, uniform
+
+param_distributions = {
+    'n_estimators': randint(50, 300),
+    'max_depth': randint(5, 30),
+    'min_samples_split': randint(2, 20),
+    'min_samples_leaf': randint(1, 10),
+    'max_features': uniform(0.1, 0.9)
+}
+
+random_search = RandomizedSearchCV(
+    RandomForestClassifier(random_state=42),
+    param_distributions,
+    n_iter=100,  # Try 100 combinations
+    cv=5,
+    scoring='f1_macro',
+    n_jobs=-1,
+    random_state=42
+)
+
+random_search.fit(X_train, y_train)
+```
+
+**Why it matters**: Proper tuning can improve performance by 10-30%+.
+
+---
+
+### Anti-Pattern 3: Train-Test Split Without Stratification
+
+**❌ Bad**: Random split ignores class distribution
+
+```python
+# ❌ Bad: Non-stratified split can create imbalanced splits
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+# y_train might be 90% class 0, y_test 70% class 0 - inconsistent!
+```
+
+**✅ Good**: Stratified split maintains class distribution
+
+```python
+# ✅ Good: Stratified split
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    stratify=y,  # Maintains class distribution
+    random_state=42
+)
+
+# Verify distribution
+print(f"Train class distribution: {y_train.value_counts(normalize=True)}")
+print(f"Test class distribution: {y_test.value_counts(normalize=True)}")
+# Both should be similar (e.g., 60% class 0, 40% class 1)
+```
+
+**Why it matters**: Stratification ensures train/test sets are representative of population.
+
+---
+
+### Anti-Pattern 4: Not Tracking Experiments
+
+**❌ Bad**: No record of what was tried
+
+```python
+# ❌ Bad: Manual tracking in comments/notebooks
+# Tried: n_estimators=100, max_depth=10 -> acc=0.82
+# Tried: n_estimators=200, max_depth=15 -> acc=0.85
+# ... lost track of 50+ experiments
+```
+
+**✅ Good**: Use MLflow or W&B for experiment tracking
+
+```python
+# ✅ Good: MLflow tracking
+import mlflow
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score
+
+mlflow.set_experiment("customer_churn")
+
+with mlflow.start_run():
+    # Log parameters
+    params = {
+        'n_estimators': 100,
+        'max_depth': 10,
+        'min_samples_split': 5
+    }
+    mlflow.log_params(params)
+
+    # Train model
+    model = RandomForestClassifier(**params, random_state=42)
+    model.fit(X_train, y_train)
+
+    # Log metrics
+    y_pred = model.predict(X_test)
+    metrics = {
+        'accuracy': accuracy_score(y_test, y_pred),
+        'f1_score': f1_score(y_test, y_pred, average='macro')
+    }
+    mlflow.log_metrics(metrics)
+
+    # Log model
+    mlflow.sklearn.log_model(model, "model")
+
+    # Log artifacts (plots, feature importance, etc.)
+    import matplotlib.pyplot as plt
+
+    plt.figure(figsize=(10, 6))
+    feature_importance = pd.DataFrame({
+        'feature': X_train.columns,
+        'importance': model.feature_importances_
+    }).sort_values('importance', ascending=False)
+
+    plt.barh(feature_importance['feature'][:10], feature_importance['importance'][:10])
+    plt.xlabel('Importance')
+    plt.title('Top 10 Features')
+    plt.tight_layout()
+    plt.savefig('feature_importance.png')
+    mlflow.log_artifact('feature_importance.png')
+
+# View experiments: mlflow ui
+```
+
+**Why it matters**: Experiment tracking enables reproducibility and comparison across runs.
+
+---
+
+### Anti-Pattern 5: Evaluating Only on Accuracy
+
+**❌ Bad**: Accuracy for imbalanced datasets
+
+```python
+# ❌ Bad: Accuracy is misleading for imbalanced classes
+# Dataset: 95% class 0, 5% class 1
+
+y_pred = model.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+print(f"Accuracy: {accuracy:.2f}")  # 95% (but predicts all class 0!)
+```
+
+**✅ Good**: Use comprehensive metrics
+
+```python
+# ✅ Good: Multiple metrics for full picture
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+    classification_report,
+    confusion_matrix
+)
+
+y_pred = model.predict(X_test)
+y_pred_proba = model.predict_proba(X_test)[:, 1]
+
+# Comprehensive evaluation
+print("Classification Report:")
+print(classification_report(y_test, y_pred))
+
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_test, y_pred))
+
+metrics = {
+    'accuracy': accuracy_score(y_test, y_pred),
+    'precision': precision_score(y_test, y_pred, average='macro'),
+    'recall': recall_score(y_test, y_pred, average='macro'),
+    'f1': f1_score(y_test, y_pred, average='macro'),
+    'roc_auc': roc_auc_score(y_test, y_pred_proba)
+}
+
+for metric, value in metrics.items():
+    print(f"{metric}: {value:.3f}")
+```
+
+**Why it matters**: Accuracy alone hides performance on minority classes.
+
+---
+
+## Complete Workflows
+
+### Workflow 1: End-to-End Binary Classification Pipeline
+
+Complete customer churn prediction with experiment tracking.
+
+```python
+# workflow_churn_prediction.py
+import pandas as pd
+import numpy as np
+from pathlib import Path
+from dataclasses import dataclass
+from typing import Tuple
+
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    classification_report,
+    roc_auc_score,
+    confusion_matrix,
+    ConfusionMatrixDisplay
+)
+import mlflow
+import joblib
+import matplotlib.pyplot as plt
+
+@dataclass
+class Config:
+    """Project configuration."""
+    data_path: Path = Path('data/churn.csv')
+    target: str = 'churn'
+    test_size: float = 0.2
+    val_size: float = 0.1
+    random_state: int = 42
+    experiment_name: str = 'churn_prediction'
+
+def set_seeds(seed: int = 42):
+    """Set all random seeds."""
+    np.random.seed(seed)
+    import random
+    random.seed(seed)
+
+def load_data(config: Config) -> pd.DataFrame:
+    """Load and validate data."""
+    df = pd.read_csv(config.data_path)
+    print(f"Loaded {len(df)} rows, {len(df.columns)} columns")
+    print(f"Target distribution:\n{df[config.target].value_counts(normalize=True)}")
+    return df
+
+def create_splits(
+    df: pd.DataFrame, config: Config
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Create stratified train/val/test splits."""
+    X = df.drop(config.target, axis=1)
+    y = df[config.target]
+
+    # Train + val / test
+    X_trainval, X_test, y_trainval, y_test = train_test_split(
+        X, y,
+        test_size=config.test_size,
+        stratify=y,
+        random_state=config.random_state
+    )
+
+    # Train / val
+    val_size_adjusted = config.val_size / (1 - config.test_size)
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_trainval, y_trainval,
+        test_size=val_size_adjusted,
+        stratify=y_trainval,
+        random_state=config.random_state
+    )
+
+    print(f"Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
+
+    return (X_train, y_train), (X_val, y_val), (X_test, y_test)
+
+def create_preprocessing_pipeline(X: pd.DataFrame) -> ColumnTransformer:
+    """Create preprocessing pipeline."""
+    # Identify feature types
+    numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
+
+    print(f"Numeric features: {len(numeric_features)}")
+    print(f"Categorical features: {len(categorical_features)}")
+
+    # Create transformers
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', StandardScaler(), numeric_features),
+            ('cat', OneHotEncoder(drop='first', handle_unknown='ignore'), categorical_features)
+        ],
+        remainder='passthrough'
+    )
+
+    return preprocessor
+
+def train_and_tune(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    preprocessor: ColumnTransformer,
+    config: Config
+) -> Pipeline:
+    """Train model with hyperparameter tuning."""
+    # Create full pipeline
+    pipeline = Pipeline([
+        ('preprocessor', preprocessor),
+        ('classifier', RandomForestClassifier(random_state=config.random_state))
+    ])
+
+    # Hyperparameter grid
+    param_grid = {
+        'classifier__n_estimators': [50, 100, 200],
+        'classifier__max_depth': [10, 20, None],
+        'classifier__min_samples_split': [2, 5, 10],
+        'classifier__min_samples_leaf': [1, 2, 4],
+        'classifier__class_weight': ['balanced', None]
+    }
+
+    # Grid search
+    grid_search = GridSearchCV(
+        pipeline,
+        param_grid,
+        cv=5,
+        scoring='roc_auc',
+        n_jobs=-1,
+        verbose=1
+    )
+
+    print("Starting hyperparameter tuning...")
+    grid_search.fit(X_train, y_train)
+
+    print(f"Best params: {grid_search.best_params_}")
+    print(f"Best CV ROC AUC: {grid_search.best_score_:.3f}")
+
+    return grid_search.best_estimator_
+
+def evaluate_model(
+    model: Pipeline,
+    X: pd.DataFrame,
+    y: pd.Series,
+    split_name: str
+) -> dict:
+    """Evaluate model and return metrics."""
+    y_pred = model.predict(X)
+    y_pred_proba = model.predict_proba(X)[:, 1]
+
+    metrics = {
+        f'{split_name}_roc_auc': roc_auc_score(y, y_pred_proba),
+        f'{split_name}_precision': precision_score(y, y_pred),
+        f'{split_name}_recall': recall_score(y, y_pred),
+        f'{split_name}_f1': f1_score(y, y_pred)
+    }
+
+    print(f"\n{split_name.upper()} Results:")
+    print(classification_report(y, y_pred))
+
+    # Confusion matrix
+    cm = confusion_matrix(y, y_pred)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+    disp.plot()
+    plt.title(f'{split_name} Confusion Matrix')
+    plt.savefig(f'confusion_matrix_{split_name}.png')
+    plt.close()
+
+    return metrics
+
+def main():
+    """Main training pipeline."""
+    config = Config()
+    set_seeds(config.random_state)
+
+    # Setup MLflow
+    mlflow.set_experiment(config.experiment_name)
+
+    with mlflow.start_run():
+        # Load data
+        df = load_data(config)
+
+        # Create splits
+        (X_train, y_train), (X_val, y_val), (X_test, y_test) = create_splits(df, config)
+
+        # Create preprocessor
+        preprocessor = create_preprocessing_pipeline(X_train)
+
+        # Train model
+        best_model = train_and_tune(X_train, y_train, preprocessor, config)
+
+        # Evaluate
+        train_metrics = evaluate_model(best_model, X_train, y_train, 'train')
+        val_metrics = evaluate_model(best_model, X_val, y_val, 'val')
+        test_metrics = evaluate_model(best_model, X_test, y_test, 'test')
+
+        # Log everything to MLflow
+        mlflow.log_params({
+            'test_size': config.test_size,
+            'val_size': config.val_size,
+            'random_state': config.random_state
+        })
+
+        all_metrics = {**train_metrics, **val_metrics, **test_metrics}
+        mlflow.log_metrics(all_metrics)
+
+        # Log model
+        mlflow.sklearn.log_model(best_model, "model")
+
+        # Log artifacts
+        for split in ['train', 'val', 'test']:
+            mlflow.log_artifact(f'confusion_matrix_{split}.png')
+
+        # Save model locally
+        joblib.dump(best_model, 'churn_model.joblib')
+        print("\nModel saved to churn_model.joblib")
+
+        print(f"\nFinal Test ROC AUC: {test_metrics['test_roc_auc']:.3f}")
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+### Workflow 2: Feature Engineering and Selection Pipeline
+
+```python
+# feature_engineering.py
+import pandas as pd
+import numpy as np
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.feature_selection import SelectKBest, mutual_info_classif
+
+class DateFeatureExtractor(BaseEstimator, TransformerMixin):
+    """Extract features from datetime columns."""
+
+    def __init__(self, date_columns: list):
+        self.date_columns = date_columns
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X = X.copy()
+
+        for col in self.date_columns:
+            if col in X.columns:
+                X[col] = pd.to_datetime(X[col])
+                X[f'{col}_year'] = X[col].dt.year
+                X[f'{col}_month'] = X[col].dt.month
+                X[f'{col}_day'] = X[col].dt.day
+                X[f'{col}_dayofweek'] = X[col].dt.dayofweek
+                X[f'{col}_quarter'] = X[col].dt.quarter
+                X = X.drop(col, axis=1)
+
+        return X
+
+class InteractionFeatures(BaseEstimator, TransformerMixin):
+    """Create interaction features."""
+
+    def __init__(self, feature_pairs: list):
+        self.feature_pairs = feature_pairs
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X = X.copy()
+
+        for f1, f2 in self.feature_pairs:
+            if f1 in X.columns and f2 in X.columns:
+                X[f'{f1}_x_{f2}'] = X[f1] * X[f2]
+                X[f'{f1}_div_{f2}'] = X[f1] / (X[f2] + 1e-8)
+
+        return X
+
+# Usage in pipeline
+from sklearn.pipeline import Pipeline
+
+feature_pipeline = Pipeline([
+    ('date_features', DateFeatureExtractor(date_columns=['signup_date', 'last_purchase'])),
+    ('interactions', InteractionFeatures(feature_pairs=[('age', 'income'), ('tenure', 'purchases')])),
+    ('selector', SelectKBest(score_func=mutual_info_classif, k=20)),
+    ('scaler', StandardScaler()),
+    ('classifier', LogisticRegression())
+])
+
+feature_pipeline.fit(X_train, y_train)
+```
+
+---
+
+**Additional Workflows** (condensed):
+- **Workflow 3**: Time series cross-validation and backtesting
+- **Workflow 4**: Model deployment with FastAPI endpoint
+- **Workflow 5**: Automated retraining pipeline with data drift detection
+
+---
+
+## 2025-Specific Patterns
+
+### Pattern 1: Polars for High-Performance DataFrames (2025 Standard)
+
+```python
+# 2025: Polars is the new standard for large-scale data processing
+import polars as pl
+
+# ✅ Lazy evaluation (doesn't load until .collect())
+df = (
+    pl.scan_csv('large_file.csv')
+    .filter(pl.col('value') > 100)
+    .groupby('category')
+    .agg([
+        pl.col('value').mean().alias('mean_value'),
+        pl.col('value').std().alias('std_value'),
+        pl.count().alias('count')
+    ])
+    .sort('mean_value', descending=True)
+    .collect()  # Execute query
+)
+
+# ✅ Much faster than pandas for large datasets
+# Benchmark: Polars is 5-10x faster than pandas on aggregations
+```
+
+### Pattern 2: scikit-learn 1.5+ TargetEncoder (2025)
+
+```python
+# scikit-learn 1.5+: Built-in target encoding
+from sklearn.preprocessing import TargetEncoder
+
+# ✅ Target encoding (mean encoding) built-in
+encoder = TargetEncoder(target_type='continuous')  # or 'binary'
+X_encoded = encoder.fit_transform(X, y)
+
+# Previously required category_encoders library
+```
+
+### Pattern 3: Type Hints with Pydantic for Data Validation
+
+```python
+# 2025: Pydantic for data validation
+from pydantic import BaseModel, Field, validator
+import pandas as pd
+
+class TrainingConfig(BaseModel):
+    n_estimators: int = Field(ge=1, le=1000)
+    max_depth: int | None = Field(None, ge=1, le=100)
+    learning_rate: float = Field(ge=0.001, le=1.0)
+    random_state: int = 42
+
+    @validator('n_estimators')
+    def validate_n_estimators(cls, v):
+        if v % 10 != 0:
+            raise ValueError('n_estimators should be multiple of 10')
+        return v
+
+config = TrainingConfig(n_estimators=100, max_depth=10, learning_rate=0.1)
+```
+
+**Additional 2025 Patterns** (condensed):
+- **Pattern 4**: PyTorch 2.x+ compile() for 2x speedup
+- **Pattern 5**: Optuna for automated hyperparameter optimization
+- **Pattern 6**: DuckDB for SQL on DataFrames
+
+---
 
 ## References
 
