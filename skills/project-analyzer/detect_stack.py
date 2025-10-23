@@ -290,14 +290,14 @@ class TechStackDetector:
 
     def _detect_react(self) -> Optional[DetectionResult]:
         """Detect standalone React projects (non-Next.js)."""
-        package_json = self.project_path / "package.json"
-        if not package_json.exists():
+        # Use tracking helper
+        package_json_content = self._read_file("package.json")
+        if not package_json_content:
             return None
 
         try:
-            with open(package_json, 'r', encoding='utf-8') as f:
-                pkg_data = json.load(f)
-        except (json.JSONDecodeError, UnicodeDecodeError):
+            pkg_data = json.loads(package_json_content)
+        except json.JSONDecodeError:
             return None
 
         deps = {**pkg_data.get('dependencies', {}), **pkg_data.get('devDependencies', {})}
@@ -320,7 +320,8 @@ class TechStackDetector:
             confidence += 0.2
             indicators.append("Create React App: +0.2")
 
-        language = "typescript" if (self.project_path / "tsconfig.json").exists() else "javascript"
+        # Detect TypeScript (with tracking)
+        language = "typescript" if self._check_file("tsconfig.json") else "javascript"
 
         return DetectionResult(
             framework=framework,
@@ -334,14 +335,14 @@ class TechStackDetector:
 
     def _detect_vue(self) -> Optional[DetectionResult]:
         """Detect Vue.js projects."""
-        package_json = self.project_path / "package.json"
-        if not package_json.exists():
+        # Use tracking helper
+        package_json_content = self._read_file("package.json")
+        if not package_json_content:
             return None
 
         try:
-            with open(package_json, 'r', encoding='utf-8') as f:
-                pkg_data = json.load(f)
-        except (json.JSONDecodeError, UnicodeDecodeError):
+            pkg_data = json.loads(package_json_content)
+        except json.JSONDecodeError:
             return None
 
         deps = {**pkg_data.get('dependencies', {}), **pkg_data.get('devDependencies', {})}
@@ -379,12 +380,12 @@ class TechStackDetector:
         Returns:
             DetectionResult if FastAPI detected, None otherwise
         """
-        # Check for Python project files
-        if not any([
-            (self.project_path / "requirements.txt").exists(),
-            (self.project_path / "pyproject.toml").exists(),
-            (self.project_path / "setup.py").exists()
-        ]):
+        # Check for Python project files (with tracking)
+        has_requirements = self._check_file("requirements.txt")
+        has_pyproject = self._check_file("pyproject.toml")
+        has_setup = self._check_file("setup.py")
+
+        if not any([has_requirements, has_pyproject, has_setup]):
             return None
 
         confidence = 0.0
@@ -392,69 +393,58 @@ class TechStackDetector:
         version = None
         tools = {}
 
-        # Check requirements.txt
-        requirements_file = self.project_path / "requirements.txt"
-        if requirements_file.exists():
-            try:
-                with open(requirements_file, 'r', encoding='utf-8') as f:
-                    requirements = f.read()
-                    requirements_lower = requirements.lower()
-                    
-                    # Check for FastAPI
-                    if 'fastapi' in requirements_lower:
-                        confidence += 0.5
-                        indicators.append("'fastapi' in requirements.txt: +0.5")
-                        
-                        # Try to extract version
-                        for line in requirements.splitlines():
-                            if 'fastapi' in line.lower() and '==' in line:
-                                version = line.split('==')[1].strip()
-                                break
-                    
-                    # Check for common FastAPI tools
-                    if 'uvicorn' in requirements_lower:
-                        tools.setdefault('server', []).append('uvicorn')
-                        confidence += 0.05
-                        indicators.append("'uvicorn' server: +0.05")
-                    
-                    if 'pytest' in requirements_lower or 'pytest-asyncio' in requirements_lower:
-                        tools.setdefault('testing', []).append('pytest')
-                        if 'pytest-asyncio' in requirements_lower:
-                            tools['testing'].append('pytest-asyncio')
-                    
-                    if 'sqlalchemy' in requirements_lower:
-                        tools.setdefault('orm', []).append('sqlalchemy')
-                    elif 'tortoise-orm' in requirements_lower:
-                        tools.setdefault('orm', []).append('tortoise-orm')
-                    
-                    if 'pydantic' in requirements_lower:
-                        tools.setdefault('validation', []).append('pydantic')
-                    
-                    if 'alembic' in requirements_lower:
-                        tools.setdefault('migration', []).append('alembic')
-                    
-                    # Database drivers
-                    if 'psycopg2' in requirements_lower or 'asyncpg' in requirements_lower:
-                        tools.setdefault('database', []).append('postgresql')
-                    if 'pymysql' in requirements_lower or 'aiomysql' in requirements_lower:
-                        tools.setdefault('database', []).append('mysql')
-                    if 'motor' in requirements_lower:
-                        tools.setdefault('database', []).append('mongodb')
-                        
-            except UnicodeDecodeError:
-                pass
+        # Check requirements.txt (with tracking)
+        requirements = self._read_file("requirements.txt")
+        if requirements:
+            requirements_lower = requirements.lower()
 
-        # Check pyproject.toml
-        pyproject_file = self.project_path / "pyproject.toml"
-        if pyproject_file.exists():
-            try:
-                with open(pyproject_file, 'r', encoding='utf-8') as f:
-                    content = f.read().lower()
-                    if 'fastapi' in content:
-                        confidence += 0.5
-                        indicators.append("'fastapi' in pyproject.toml: +0.5")
-            except UnicodeDecodeError:
-                pass
+            # Check for FastAPI
+            if 'fastapi' in requirements_lower:
+                confidence += 0.5
+                indicators.append("'fastapi' in requirements.txt: +0.5")
+
+                # Try to extract version
+                for line in requirements.splitlines():
+                    if 'fastapi' in line.lower() and '==' in line:
+                        version = line.split('==')[1].strip()
+                        break
+
+            # Check for common FastAPI tools
+            if 'uvicorn' in requirements_lower:
+                tools.setdefault('server', []).append('uvicorn')
+                confidence += 0.05
+                indicators.append("'uvicorn' server: +0.05")
+
+            if 'pytest' in requirements_lower or 'pytest-asyncio' in requirements_lower:
+                tools.setdefault('testing', []).append('pytest')
+                if 'pytest-asyncio' in requirements_lower:
+                    tools['testing'].append('pytest-asyncio')
+
+            if 'sqlalchemy' in requirements_lower:
+                tools.setdefault('orm', []).append('sqlalchemy')
+            elif 'tortoise-orm' in requirements_lower:
+                tools.setdefault('orm', []).append('tortoise-orm')
+
+            if 'pydantic' in requirements_lower:
+                tools.setdefault('validation', []).append('pydantic')
+
+            if 'alembic' in requirements_lower:
+                tools.setdefault('migration', []).append('alembic')
+
+            # Database drivers
+            if 'psycopg2' in requirements_lower or 'asyncpg' in requirements_lower:
+                tools.setdefault('database', []).append('postgresql')
+            if 'pymysql' in requirements_lower or 'aiomysql' in requirements_lower:
+                tools.setdefault('database', []).append('mysql')
+            if 'motor' in requirements_lower:
+                tools.setdefault('database', []).append('mongodb')
+
+        # Check pyproject.toml (with tracking)
+        pyproject = self._read_file("pyproject.toml")
+        if pyproject:
+            if 'fastapi' in pyproject.lower():
+                confidence += 0.5
+                indicators.append("'fastapi' in pyproject.toml: +0.5")
 
         # Check for Python files with fastapi imports
         python_files = list(self.project_path.glob("*.py"))
@@ -537,10 +527,10 @@ class TechStackDetector:
 
         # Project structure
         project_structure = {
-            'has_requirements_txt': requirements_file.exists(),
-            'has_pyproject_toml': pyproject_file.exists(),
-            'has_app_directory': (self.project_path / 'app').exists(),
-            'has_tests': (self.project_path / 'tests').exists() or (self.project_path / 'test').exists()
+            'has_requirements_txt': has_requirements,
+            'has_pyproject_toml': has_pyproject,
+            'has_app_directory': self._check_dir('app'),
+            'has_tests': self._check_dir('tests') or self._check_dir('test')
         }
 
         return DetectionResult(
@@ -556,8 +546,8 @@ class TechStackDetector:
 
     def _detect_django(self) -> Optional[DetectionResult]:
         """Detect Django projects."""
-        # Check for manage.py (Django's signature file)
-        if not (self.project_path / "manage.py").exists():
+        # Check for manage.py (Django's signature file) with tracking
+        if not self._check_file("manage.py"):
             return None
 
         confidence = 0.8
@@ -575,25 +565,21 @@ class TechStackDetector:
 
     def _detect_flask(self) -> Optional[DetectionResult]:
         """Detect Flask projects."""
-        requirements_file = self.project_path / "requirements.txt"
-        if not requirements_file.exists():
+        # Use tracking helper
+        requirements = self._read_file("requirements.txt")
+        if not requirements:
             return None
 
-        try:
-            with open(requirements_file, 'r', encoding='utf-8') as f:
-                requirements = f.read().lower()
-                if 'flask' in requirements:
-                    return DetectionResult(
-                        framework="flask",
-                        language="python",
-                        confidence=0.7,
-                        indicators=["'flask' in requirements.txt: +0.7"],
-                        tools={},
-                        recommended_subagents=['flask-tester', 'api-reviewer'],
-                        project_structure={}
-                    )
-        except UnicodeDecodeError:
-            pass
+        if 'flask' in requirements.lower():
+            return DetectionResult(
+                framework="flask",
+                language="python",
+                confidence=0.7,
+                indicators=["'flask' in requirements.txt: +0.7"],
+                tools={},
+                recommended_subagents=['flask-tester', 'api-reviewer'],
+                project_structure={}
+            )
 
         return None
 
