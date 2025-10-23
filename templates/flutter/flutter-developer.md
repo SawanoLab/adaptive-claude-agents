@@ -879,15 +879,1294 @@ flutter analyze
 flutter format .
 ```
 
+## Troubleshooting
+
+### Issue 1: "RenderFlex overflowed" error
+
+**Cause**: Widget exceeds available space without scrolling
+
+**Solution**: Wrap in SingleChildScrollView or ListView
+
+```dart
+// ❌ Bad: Overflows when content is large
+Column(
+  children: [
+    Text('Long content...'),
+    Text('More content...'),
+    // ... many widgets
+  ],
+)
+
+// ✅ Good: Scrollable
+SingleChildScrollView(
+  child: Column(
+    children: [
+      Text('Long content...'),
+      Text('More content...'),
+    ],
+  ),
+)
+
+// ✅ Good: ListView for dynamic lists
+ListView.builder(
+  itemCount: items.length,
+  itemBuilder: (context, index) {
+    return ListTile(title: Text(items[index]));
+  },
+)
+```
+
+**Why**: Flutter doesn't auto-scroll. Explicitly wrap content in scrollable widgets.
+
+---
+
+### Issue 2: "setState() called after dispose()"
+
+**Cause**: Async operation completes after widget unmounted
+
+**Solution**: Check mounted before setState
+
+```dart
+// ❌ Bad: setState after widget disposed
+Future<void> loadData() async {
+  final data = await api.fetchData();
+  setState(() {
+    _data = data;  // Crash if widget disposed
+  });
+}
+
+// ✅ Good: Check mounted
+Future<void> loadData() async {
+  final data = await api.fetchData();
+  if (mounted) {
+    setState(() {
+      _data = data;
+    });
+  }
+}
+
+// ✅ Good: Cancel futures in dispose
+StreamSubscription? _subscription;
+
+@override
+void initState() {
+  super.initState();
+  _subscription = stream.listen((data) {
+    setState(() => _data = data);
+  });
+}
+
+@override
+void dispose() {
+  _subscription?.cancel();
+  super.dispose();
+}
+```
+
+**Why**: Widgets can be disposed while async operations are running.
+
+---
+
+### Issue 3: "The getter 'context' was called on null"
+
+**Cause**: Accessing context outside build method or after dispose
+
+**Solution**: Use context parameter or save BuildContext
+
+```dart
+// ❌ Bad: Using class-level context
+class _MyWidgetState extends State<MyWidget> {
+  BuildContext? _context;
+
+  @override
+  Widget build(BuildContext context) {
+    _context = context;  // Don't store context
+    return ElevatedButton(
+      onPressed: () async {
+        await Future.delayed(Duration(seconds: 1));
+        Navigator.push(_context!, ...);  // Dangerous!
+      },
+      child: Text('Navigate'),
+    );
+  }
+}
+
+// ✅ Good: Use context parameter directly
+@override
+Widget build(BuildContext context) {
+  return ElevatedButton(
+    onPressed: () async {
+      await Future.delayed(Duration(seconds: 1));
+      if (context.mounted) {  // Flutter 3.7+
+        Navigator.push(context, ...);
+      }
+    },
+    child: Text('Navigate'),
+  );
+}
+
+// ✅ Good: Use Builder widget
+@override
+Widget build(BuildContext context) {
+  return Builder(
+    builder: (context) {
+      return ElevatedButton(
+        onPressed: () {
+          Navigator.push(context, ...);
+        },
+        child: Text('Navigate'),
+      );
+    },
+  );
+}
+```
+
+**Why**: BuildContext becomes invalid after widget disposal.
+
+---
+
+### Issue 4: "A RenderFlex overflowed by Infinity pixels"
+
+**Cause**: Unbounded constraints (Row/Column inside Row/Column without Expanded)
+
+**Solution**: Wrap with Expanded or Flexible
+
+```dart
+// ❌ Bad: Nested Row without constraints
+Row(
+  children: [
+    Row(  // Unbounded width
+      children: [Text('Very long text...')],
+    ),
+  ],
+)
+
+// ✅ Good: Use Expanded
+Row(
+  children: [
+    Expanded(
+      child: Row(
+        children: [
+          Expanded(child: Text('Very long text...')),
+        ],
+      ),
+    ),
+  ],
+)
+
+// ✅ Good: Specify intrinsic width
+Row(
+  children: [
+    IntrinsicWidth(
+      child: Row(
+        children: [Text('Text')],
+      ),
+    ),
+  ],
+)
+```
+
+**Why**: Widgets need bounded constraints. Expanded provides them.
+
+---
+
+### Issue 5: Hot reload not working or white screen
+
+**Cause**: Const constructors prevent hot reload, or stateful widget lost state
+
+**Solution**: Remove unnecessary const, use hot restart
+
+```dart
+// ❌ Bad: Const prevents hot reload of children
+const Column(
+  children: [
+    MyWidget(),  // Changes won't hot reload
+  ],
+)
+
+// ✅ Good: Only use const for truly const widgets
+Column(
+  children: [
+    MyWidget(),  // Can hot reload
+  ],
+)
+
+// ✅ Good: Preserve state across hot reloads
+class _MyWidgetState extends State<MyWidget> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);  // Required for AutomaticKeepAliveClientMixin
+    return Text('Data preserved');
+  }
+}
+```
+
+**Workaround**:
+- Hot Restart (not Hot Reload) for major changes
+- `flutter clean && flutter pub get` if persistent
+
+**Why**: Const widgets and deep widget trees can interfere with hot reload.
+
+---
+
+### Issue 6: "LateInitializationError: Field '...' has not been initialized"
+
+**Cause**: Accessing late variable before initialization
+
+**Solution**: Initialize in initState or make nullable
+
+```dart
+// ❌ Bad: Late variable never initialized
+class _MyWidgetState extends State<MyWidget> {
+  late final String userId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(userId);  // Crash!
+  }
+}
+
+// ✅ Good: Initialize in initState
+class _MyWidgetState extends State<MyWidget> {
+  late final String userId;
+
+  @override
+  void initState() {
+    super.initState();
+    userId = widget.id;  // Initialize here
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(userId);
+  }
+}
+
+// ✅ Good: Make nullable with default
+class _MyWidgetState extends State<MyWidget> {
+  String? userId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(userId ?? 'Loading...');
+  }
+}
+```
+
+**Why**: `late` defers initialization but doesn't make it automatic.
+
+---
+
+### Issue 7: Platform-specific errors (iOS vs Android)
+
+**Cause**: Platform differences in permissions, APIs, or UI
+
+**Solution**: Use Platform checks and conditional code
+
+```dart
+import 'dart:io' show Platform;
+
+// ✅ Platform-specific UI
+Widget build(BuildContext context) {
+  if (Platform.isIOS) {
+    return CupertinoButton(
+      onPressed: onPressed,
+      child: Text('iOS Button'),
+    );
+  } else {
+    return ElevatedButton(
+      onPressed: onPressed,
+      child: Text('Android Button'),
+    );
+  }
+}
+
+// ✅ Platform-specific logic
+Future<void> requestPermissions() async {
+  if (Platform.isAndroid) {
+    // Android-specific permission request
+    await Permission.storage.request();
+  } else if (Platform.isIOS) {
+    // iOS-specific permission request
+    await Permission.photos.request();
+  }
+}
+
+// ✅ Platform channels for native code
+static const platform = MethodChannel('com.example.app/battery');
+
+Future<int> getBatteryLevel() async {
+  try {
+    final int result = await platform.invokeMethod('getBatteryLevel');
+    return result;
+  } on PlatformException catch (e) {
+    print('Failed to get battery level: ${e.message}');
+    return -1;
+  }
+}
+```
+
+**Why**: iOS and Android have different native APIs and UI conventions.
+
+---
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Using StatefulWidget Unnecessarily
+
+**❌ Bad**: StatefulWidget for static content
+
+```dart
+// ❌ Bad: No state management needed
+class ProfileCard extends StatefulWidget {
+  final User user;
+  const ProfileCard({required this.user});
+
+  @override
+  State<ProfileCard> createState() => _ProfileCardState();
+}
+
+class _ProfileCardState extends State<ProfileCard> {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Text(widget.user.name),  // Just displaying props
+    );
+  }
+}
+```
+
+**✅ Good**: StatelessWidget for static content
+
+```dart
+// ✅ Good: StatelessWidget when no state
+class ProfileCard extends StatelessWidget {
+  final User user;
+  const ProfileCard({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Text(user.name),
+    );
+  }
+}
+```
+
+**When to use StatefulWidget**:
+- Managing local UI state (expanded/collapsed, selected items)
+- Animations with AnimationController
+- TextEditingController
+- FocusNode
+- Timers or subscriptions
+
+**Why it matters**: Unnecessary StatefulWidget adds overhead and complexity.
+
+---
+
+### Anti-Pattern 2: Building Widgets in Methods Instead of Extracting to New Widget
+
+**❌ Bad**: Methods returning widgets
+
+```dart
+// ❌ Bad: Widget-building methods
+class HomePage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          _buildHeader(),
+          _buildBody(),
+          _buildFooter(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {  // Should be separate widget
+    return Container(...);
+  }
+
+  Widget _buildBody() {  // Should be separate widget
+    return ListView(...);
+  }
+
+  Widget _buildFooter() {  // Should be separate widget
+    return BottomAppBar(...);
+  }
+}
+```
+
+**✅ Good**: Extract to separate widgets
+
+```dart
+// ✅ Good: Separate widgets
+class HomePage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          Header(),
+          Body(),
+          Footer(),
+        ],
+      ),
+    );
+  }
+}
+
+class Header extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(...);
+  }
+}
+
+class Body extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ListView(...);
+  }
+}
+
+class Footer extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return BottomAppBar(...);
+  }
+}
+```
+
+**Why it matters**:
+- Separate widgets enable const constructors (performance)
+- Better hot reload support
+- Clearer widget tree in Flutter DevTools
+- Reusability
+
+---
+
+### Anti-Pattern 3: Not Using const Constructors
+
+**❌ Bad**: Missing const for immutable widgets
+
+```dart
+// ❌ Bad: No const (rebuilds unnecessarily)
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(
+          title: Text('My App'),
+        ),
+      ),
+    );
+  }
+}
+```
+
+**✅ Good**: Use const where possible
+
+```dart
+// ✅ Good: Const prevents unnecessary rebuilds
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      home: HomeScreen(),
+    );
+  }
+}
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My App'),  // Const text
+      ),
+      body: const Center(
+        child: Text('Hello'),  // Const text
+      ),
+    );
+  }
+}
+```
+
+**Performance impact**:
+- Const widgets are cached
+- Skipped in rebuilds
+- Reduced memory allocations
+
+**Why it matters**: Const improves performance significantly in large apps.
+
+---
+
+### Anti-Pattern 4: setState() for Complex State
+
+**❌ Bad**: setState for app-wide or complex state
+
+```dart
+// ❌ Bad: setState doesn't scale
+class _HomeScreenState extends State<HomeScreen> {
+  List<Todo> _todos = [];
+  User? _user;
+  ThemeMode _theme = ThemeMode.light;
+
+  void addTodo(Todo todo) {
+    setState(() {
+      _todos.add(todo);  // Rebuilds entire widget
+    });
+  }
+
+  void updateUser(User user) {
+    setState(() {
+      _user = user;  // Rebuilds entire widget
+    });
+  }
+}
+```
+
+**✅ Good**: Use proper state management
+
+```dart
+// ✅ Good: Riverpod for granular updates
+final todosProvider = StateNotifierProvider<TodosNotifier, List<Todo>>((ref) {
+  return TodosNotifier();
+});
+
+class TodosNotifier extends StateNotifier<List<Todo>> {
+  TodosNotifier() : super([]);
+
+  void addTodo(Todo todo) {
+    state = [...state, todo];  // Only rebuilds listeners
+  }
+}
+
+// In widget
+class HomeScreen extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final todos = ref.watch(todosProvider);
+
+    return ListView.builder(
+      itemCount: todos.length,
+      itemBuilder: (context, index) {
+        return TodoItem(todo: todos[index]);
+      },
+    );
+  }
+}
+```
+
+**When to use setState**:
+- Local UI state (expanded/collapsed, selected index)
+- Form fields (if not using form package)
+- Simple toggles
+
+**When NOT to use setState**:
+- App-wide state (authentication, theme)
+- Shared state across screens
+- Complex business logic
+
+**Why it matters**: setState rebuilds entire widget tree. State management libraries provide granular updates.
+
+---
+
+### Anti-Pattern 5: Calling Async Methods in build()
+
+**❌ Bad**: Async calls in build method
+
+```dart
+// ❌ Bad: build() should be pure
+@override
+Widget build(BuildContext context) {
+  final user = await api.getUser();  // Error: build is not async
+
+  return Text(user.name);
+}
+
+// ❌ Bad: Async without error handling
+@override
+Widget build(BuildContext context) {
+  return FutureBuilder(
+    future: api.getUser(),  // Creates new Future on every build!
+    builder: (context, snapshot) {
+      return Text(snapshot.data?.name ?? 'Loading...');
+    },
+  );
+}
+```
+
+**✅ Good**: Initialize async data properly
+
+```dart
+// ✅ Good: Initialize in initState
+class _ProfileScreenState extends State<ProfileScreen> {
+  late Future<User> _userFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _userFuture = api.getUser();  // Call once
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<User>(
+      future: _userFuture,  // Reuse same Future
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return CircularProgressIndicator();
+        }
+
+        if (snapshot.hasError) {
+          return Text('Error: ${snapshot.error}');
+        }
+
+        final user = snapshot.data!;
+        return Text(user.name);
+      },
+    );
+  }
+}
+
+// ✅ Good: Use state management (Riverpod)
+final userProvider = FutureProvider.autoDispose<User>((ref) async {
+  return await api.getUser();
+});
+
+class ProfileScreen extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userAsync = ref.watch(userProvider);
+
+    return userAsync.when(
+      data: (user) => Text(user.name),
+      loading: () => CircularProgressIndicator(),
+      error: (err, stack) => Text('Error: $err'),
+    );
+  }
+}
+```
+
+**Why it matters**: build() can be called many times per second. Async calls must be cached.
+
+---
+
+### Anti-Pattern 6: Not Disposing Controllers
+
+**❌ Bad**: Leaked controllers
+
+```dart
+// ❌ Bad: Controller never disposed
+class _FormScreenState extends State<FormScreen> {
+  final nameController = TextEditingController();
+  final emailController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TextField(controller: nameController),
+        TextField(controller: emailController),
+      ],
+    );
+  }
+  // Missing dispose() - memory leak!
+}
+```
+
+**✅ Good**: Always dispose controllers
+
+```dart
+// ✅ Good: Dispose in dispose()
+class _FormScreenState extends State<FormScreen> {
+  late final TextEditingController nameController;
+  late final TextEditingController emailController;
+
+  @override
+  void initState() {
+    super.initState();
+    nameController = TextEditingController();
+    emailController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    emailController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TextField(controller: nameController),
+        TextField(controller: emailController),
+      ],
+    );
+  }
+}
+```
+
+**Controllers that need disposal**:
+- TextEditingController
+- AnimationController
+- ScrollController
+- TabController
+- PageController
+- FocusNode
+
+**Why it matters**: Undisposed controllers cause memory leaks.
+
+---
+
+### Anti-Pattern 7: Using BuildContext Across Async Gaps
+
+**❌ Bad**: Using context after await
+
+```dart
+// ❌ Bad: Context may be invalid after await
+Future<void> saveData(BuildContext context) async {
+  await api.saveData();
+  Navigator.pop(context);  // Context might be unmounted!
+}
+
+// In widget
+ElevatedButton(
+  onPressed: () => saveData(context),
+  child: Text('Save'),
+)
+```
+
+**✅ Good**: Check mounted before using context
+
+```dart
+// ✅ Good: Check mounted (Flutter 3.7+)
+Future<void> saveData(BuildContext context) async {
+  await api.saveData();
+
+  if (context.mounted) {
+    Navigator.pop(context);
+  }
+}
+
+// ✅ Good: Use context before await
+Future<void> saveData(BuildContext context) async {
+  final navigator = Navigator.of(context);  // Get navigator first
+  await api.saveData();
+  navigator.pop();  // Safe to use
+}
+
+// ✅ Good: Use state management instead
+class _MyWidgetState extends State<MyWidget> {
+  Future<void> saveData() async {
+    await api.saveData();
+
+    if (mounted) {
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: saveData,
+      child: Text('Save'),
+    );
+  }
+}
+```
+
+**Why it matters**: Widget can be disposed while awaiting, causing "BuildContext not found" errors.
+
+---
+
+## Complete Workflows
+
+### Workflow 1: Full Authentication Flow with Form Validation
+
+```dart
+// models/user.dart
+class User {
+  final String id;
+  final String email;
+  final String name;
+
+  User({required this.id, required this.email, required this.name});
+
+  factory User.fromJson(Map<String, dynamic> json) => User(
+    id: json['id'],
+    email: json['email'],
+    name: json['name'],
+  );
+}
+
+// providers/auth_provider.dart (Riverpod)
+final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  return AuthNotifier(ref.read(apiServiceProvider));
+});
+
+class AuthState {
+  final User? user;
+  final bool isLoading;
+  final String? error;
+
+  AuthState({this.user, this.isLoading = false, this.error});
+
+  AuthState copyWith({User? user, bool? isLoading, String? error}) {
+    return AuthState(
+      user: user ?? this.user,
+      isLoading: isLoading ?? this.isLoading,
+      error: error ?? this.error,
+    );
+  }
+}
+
+class AuthNotifier extends StateNotifier<AuthState> {
+  final ApiService apiService;
+
+  AuthNotifier(this.apiService) : super(AuthState());
+
+  Future<void> login(String email, String password) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      final user = await apiService.login(email, password);
+      state = state.copyWith(user: user, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(error: e.toString(), isLoading: false);
+    }
+  }
+
+  void logout() {
+    state = AuthState();
+  }
+}
+
+// screens/login_screen.dart
+class LoginScreen extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController();
+    _passwordController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final email = _emailController.text;
+    final password = _passwordController.text;
+
+    await ref.read(authProvider.notifier).login(email, password);
+
+    final authState = ref.read(authProvider);
+
+    if (mounted && authState.user != null) {
+      Navigator.pushReplacementNamed(context, '/home');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Login')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Email is required';
+                  }
+                  if (!value.contains('@')) {
+                    return 'Invalid email';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _passwordController,
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  border: OutlineInputBorder(),
+                ),
+                obscureText: true,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Password is required';
+                  }
+                  if (value.length < 8) {
+                    return 'Password must be at least 8 characters';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+              if (authState.error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    authState.error!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: authState.isLoading ? null : _handleLogin,
+                  child: authState.isLoading
+                      ? const CircularProgressIndicator()
+                      : const Text('Login'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+```
+
+---
+
+### Workflow 2: Infinite Scroll List with Pull-to-Refresh
+
+```dart
+// providers/posts_provider.dart
+final postsProvider = StateNotifierProvider<PostsNotifier, PostsState>((ref) {
+  return PostsNotifier(ref.read(apiServiceProvider));
+});
+
+class PostsState {
+  final List<Post> posts;
+  final bool isLoading;
+  final bool hasMore;
+  final String? error;
+
+  PostsState({
+    this.posts = const [],
+    this.isLoading = false,
+    this.hasMore = true,
+    this.error,
+  });
+
+  PostsState copyWith({
+    List<Post>? posts,
+    bool? isLoading,
+    bool? hasMore,
+    String? error,
+  }) {
+    return PostsState(
+      posts: posts ?? this.posts,
+      isLoading: isLoading ?? this.isLoading,
+      hasMore: hasMore ?? this.hasMore,
+      error: error ?? this.error,
+    );
+  }
+}
+
+class PostsNotifier extends StateNotifier<PostsState> {
+  final ApiService apiService;
+  int _page = 1;
+  final int _pageSize = 20;
+
+  PostsNotifier(this.apiService) : super(PostsState()) {
+    loadPosts();
+  }
+
+  Future<void> loadPosts() async {
+    if (state.isLoading || !state.hasMore) return;
+
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      final newPosts = await apiService.getPosts(page: _page, limit: _pageSize);
+
+      state = state.copyWith(
+        posts: [...state.posts, ...newPosts],
+        isLoading: false,
+        hasMore: newPosts.length == _pageSize,
+      );
+
+      _page++;
+    } catch (e) {
+      state = state.copyWith(error: e.toString(), isLoading: false);
+    }
+  }
+
+  Future<void> refresh() async {
+    _page = 1;
+    state = PostsState();
+    await loadPosts();
+  }
+}
+
+// screens/posts_screen.dart
+class PostsScreen extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<PostsScreen> createState() => _PostsScreenState();
+}
+
+class _PostsScreenState extends ConsumerState<PostsScreen> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController()
+      ..addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent * 0.9) {
+      ref.read(postsProvider.notifier).loadPosts();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final postsState = ref.watch(postsProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Posts')),
+      body: RefreshIndicator(
+        onRefresh: () => ref.read(postsProvider.notifier).refresh(),
+        child: ListView.builder(
+          controller: _scrollController,
+          itemCount: postsState.posts.length + (postsState.hasMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index == postsState.posts.length) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            final post = postsState.posts[index];
+            return ListTile(
+              title: Text(post.title),
+              subtitle: Text(post.body),
+              onTap: () => Navigator.pushNamed(
+                context,
+                '/post',
+                arguments: post,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+```
+
+---
+
+**Additional Workflows** (condensed):
+- **Workflow 3**: Image picker with cropping and upload to S3
+- **Workflow 4**: Local database with sqflite (CRUD operations)
+- **Workflow 5**: Real-time chat with WebSocket and message persistence
+
+---
+
+## 2025-Specific Patterns
+
+### Pattern 1: Flutter 3.24+ Widget State Restoration
+
+```dart
+// Flutter 3.24+: Automatic state restoration
+class CounterScreen extends StatefulWidget {
+  const CounterScreen({super.key});
+
+  @override
+  State<CounterScreen> createState() => _CounterScreenState();
+}
+
+class _CounterScreenState extends State<CounterScreen> with RestorationMixin {
+  final RestorableInt _counter = RestorableInt(0);
+
+  @override
+  String? get restorationId => 'counter_screen';
+
+  @override
+  void restoreState(RestorationBucket? oldBucket, bool initialRestore) {
+    registerForRestoration(_counter, 'counter');
+  }
+
+  @override
+  void dispose() {
+    _counter.dispose();
+    super.dispose();
+  }
+
+  void _increment() {
+    setState(() {
+      _counter.value++;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Counter')),
+      body: Center(
+        child: Text('Count: ${_counter.value}'),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _increment,
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+```
+
+### Pattern 2: Riverpod 3.0+ Code Generation
+
+```dart
+// Flutter 3.x + Riverpod 3.0+: Code generation
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'user_provider.g.dart';
+
+@riverpod
+class UserNotifier extends _$UserNotifier {
+  @override
+  User? build() => null;
+
+  Future<void> login(String email, String password) async {
+    state = await ref.read(apiServiceProvider).login(email, password);
+  }
+
+  void logout() {
+    state = null;
+  }
+}
+
+// Usage
+class ProfileScreen extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(userNotifierProvider);
+
+    return user == null
+        ? Text('Not logged in')
+        : Text('Hello, ${user.name}');
+  }
+}
+```
+
+### Pattern 3: Material 3 Design (2025 Standard)
+
+```dart
+// Flutter 3.24+: Material 3
+MaterialApp(
+  theme: ThemeData(
+    useMaterial3: true,  // Material 3 design
+    colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+  ),
+  home: Scaffold(
+    appBar: AppBar(
+      title: const Text('Material 3'),
+    ),
+    body: Column(
+      children: [
+        // Segmented button (M3)
+        SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(value: 0, label: Text('Day')),
+            ButtonSegment(value: 1, label: Text('Week')),
+            ButtonSegment(value: 2, label: Text('Month')),
+          ],
+          selected: {0},
+          onSelectionChanged: (Set<int> selected) {},
+        ),
+        // Filled button (M3)
+        FilledButton(
+          onPressed: () {},
+          child: const Text('Filled Button'),
+        ),
+        // Badge (M3)
+        Badge(
+          label: const Text('3'),
+          child: const Icon(Icons.notifications),
+        ),
+      ],
+    ),
+  ),
+)
+```
+
+**Additional 2025 Patterns** (condensed):
+- **Pattern 4**: Impeller rendering engine (default in Flutter 3.24+)
+- **Pattern 5**: Dart 3.5+ pattern matching enhancements
+- **Pattern 6**: Flutter web with WASM compilation
+
+---
+
 ## References
 
 - [Flutter Documentation](https://flutter.dev/docs)
 - [Dart Language Tour](https://dart.dev/guides/language/language-tour)
 - [Provider Package](https://pub.dev/packages/provider)
 - [Riverpod Package](https://riverpod.dev/)
+- [Riverpod Code Generation](https://riverpod.dev/docs/concepts/about_code_generation)
 - [GoRouter Package](https://pub.dev/packages/go_router)
 - [Dio Package](https://pub.dev/packages/dio)
 - [Flutter Cookbook](https://flutter.dev/docs/cookbook)
+- [Material 3 Design](https://m3.material.io/)
 
 ---
 
