@@ -1016,6 +1016,1435 @@ go test -cover ./...
 CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/server cmd/server/main.go
 ```
 
+## Troubleshooting
+
+### Issue 1: "cannot find package" after go get
+
+**Cause**: Module cache not updated or incorrect import path
+
+**Solution**: Clean module cache and verify imports
+
+```bash
+# Clear module cache
+go clean -modcache
+
+# Verify go.mod is correct
+go mod verify
+
+# Download dependencies
+go mod download
+
+# Tidy up dependencies
+go mod tidy
+```
+
+**Why**: Go modules cache can become stale. `go mod tidy` removes unused dependencies and adds missing ones.
+
+---
+
+### Issue 2: Race conditions detected by go test -race
+
+**Cause**: Concurrent access to shared memory without synchronization
+
+**Solution**: Use mutexes, channels, or atomic operations
+
+```go
+// ❌ Bad: Race condition
+type Counter struct {
+    count int
+}
+
+func (c *Counter) Increment() {
+    c.count++  // Race condition if called concurrently
+}
+
+// ✅ Good: Mutex protection
+type Counter struct {
+    mu    sync.Mutex
+    count int
+}
+
+func (c *Counter) Increment() {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.count++
+}
+
+// ✅ Good: Atomic operations
+type Counter struct {
+    count atomic.Int64
+}
+
+func (c *Counter) Increment() {
+    c.count.Add(1)
+}
+
+// ✅ Good: Channel-based synchronization
+type Counter struct {
+    ch chan int
+}
+
+func (c *Counter) Increment() {
+    c.ch <- 1
+}
+```
+
+**Detection**:
+```bash
+go test -race ./...
+```
+
+**Why**: Race detector catches concurrent memory access bugs at runtime.
+
+---
+
+### Issue 3: Goroutine leaks causing memory growth
+
+**Cause**: Goroutines started but never terminated
+
+**Solution**: Always have termination mechanism (context, done channel)
+
+```go
+// ❌ Bad: Goroutine leak
+func StartWorker() {
+    go func() {
+        for {
+            // Runs forever, no way to stop
+            time.Sleep(time.Second)
+            doWork()
+        }
+    }()
+}
+
+// ✅ Good: Context-based cancellation
+func StartWorker(ctx context.Context) {
+    go func() {
+        ticker := time.NewTicker(time.Second)
+        defer ticker.Stop()
+
+        for {
+            select {
+            case <-ctx.Done():
+                return  // Clean exit
+            case <-ticker.C:
+                doWork()
+            }
+        }
+    }()
+}
+
+// ✅ Good: Done channel pattern
+func StartWorker(done <-chan struct{}) {
+    go func() {
+        for {
+            select {
+            case <-done:
+                return
+            default:
+                doWork()
+                time.Sleep(time.Second)
+            }
+        }
+    }()
+}
+```
+
+**Detection**: Use `runtime.NumGoroutine()` to monitor goroutine count
+
+```go
+import "runtime"
+
+func main() {
+    fmt.Printf("Goroutines: %d\n", runtime.NumGoroutine())
+}
+```
+
+**Why**: Leaked goroutines consume memory and CPU, eventually causing OOM.
+
+---
+
+### Issue 4: "http: request body too large" or OOM on file upload
+
+**Cause**: No limit on request body size
+
+**Solution**: Limit request body size with middleware
+
+```go
+// ✅ Gin: Limit request body size
+func RequestSizeLimit(maxSize int64) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSize)
+        c.Next()
+    }
+}
+
+router.Use(RequestSizeLimit(10 << 20))  // 10 MB limit
+
+// ✅ Standard library
+http.MaxBytesReader(w, r.Body, 10<<20)  // 10 MB
+
+// ✅ File upload with size check
+func UploadHandler(c *gin.Context) {
+    file, err := c.FormFile("file")
+    if err != nil {
+        c.JSON(400, gin.H{"error": "No file uploaded"})
+        return
+    }
+
+    // Check file size
+    if file.Size > 10<<20 {  // 10 MB
+        c.JSON(400, gin.H{"error": "File too large (max 10MB)"})
+        return
+    }
+
+    // Process file
+    if err := c.SaveUploadedFile(file, "./uploads/"+file.Filename); err != nil {
+        c.JSON(500, gin.H{"error": "Failed to save file"})
+        return
+    }
+
+    c.JSON(200, gin.H{"message": "File uploaded successfully"})
+}
+```
+
+**Why**: Unbounded uploads can exhaust memory and enable DoS attacks.
+
+---
+
+### Issue 5: Database connection pool exhausted
+
+**Cause**: Not closing database connections or too few max connections
+
+**Solution**: Configure connection pool properly
+
+```go
+// ✅ Configure GORM connection pool
+db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+if err != nil {
+    log.Fatal(err)
+}
+
+sqlDB, err := db.DB()
+if err != nil {
+    log.Fatal(err)
+}
+
+// SetMaxIdleConns sets the maximum number of connections in the idle connection pool
+sqlDB.SetMaxIdleConns(10)
+
+// SetMaxOpenConns sets the maximum number of open connections to the database
+sqlDB.SetMaxOpenConns(100)
+
+// SetConnMaxLifetime sets the maximum amount of time a connection may be reused
+sqlDB.SetConnMaxLifetime(time.Hour)
+
+// ✅ Always use context with timeout for queries
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+var users []User
+if err := db.WithContext(ctx).Find(&users).Error; err != nil {
+    // Handle error
+}
+```
+
+**Why**: Proper pool configuration prevents connection exhaustion and timeouts.
+
+---
+
+### Issue 6: "context deadline exceeded" errors
+
+**Cause**: Operations take longer than context timeout
+
+**Solution**: Increase timeout or optimize query
+
+```go
+// ❌ Bad: Too short timeout for complex operation
+ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+defer cancel()
+
+// ✅ Good: Reasonable timeout based on operation
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+
+// ✅ Good: Check context before expensive operations
+func ProcessData(ctx context.Context, data []byte) error {
+    select {
+    case <-ctx.Done():
+        return ctx.Err()  // Context cancelled
+    default:
+    }
+
+    // Process data
+    return nil
+}
+
+// ✅ Good: Add timeout per handler
+func (h *Handler) GetData(c *gin.Context) {
+    ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+    defer cancel()
+
+    data, err := h.service.FetchData(ctx)
+    if err != nil {
+        if errors.Is(err, context.DeadlineExceeded) {
+            c.JSON(504, gin.H{"error": "Request timeout"})
+            return
+        }
+        c.JSON(500, gin.H{"error": "Internal error"})
+        return
+    }
+
+    c.JSON(200, data)
+}
+```
+
+**Why**: Context deadlines prevent hanging operations, but must be tuned appropriately.
+
+---
+
+### Issue 7: JSON unmarshaling fails with "json: cannot unmarshal"
+
+**Cause**: Struct field tags incorrect or unexported fields
+
+**Solution**: Add json tags and export fields
+
+```go
+// ❌ Bad: Unexported fields, no tags
+type User struct {
+    id    int64   // unexported, won't be marshaled
+    name  string  // unexported
+    Email string  // No json tag, will use field name "Email"
+}
+
+// ✅ Good: Exported fields with json tags
+type User struct {
+    ID    int64  `json:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+// ✅ Good: Optional fields with omitempty
+type User struct {
+    ID        int64   `json:"id"`
+    Name      string  `json:"name"`
+    Email     string  `json:"email"`
+    Bio       *string `json:"bio,omitempty"`  // Pointer for optional
+    CreatedAt time.Time `json:"created_at"`
+}
+
+// ✅ Good: Custom unmarshal for validation
+func (u *User) UnmarshalJSON(data []byte) error {
+    type Alias User  // Avoid recursion
+    aux := &struct {
+        *Alias
+    }{
+        Alias: (*Alias)(u),
+    }
+
+    if err := json.Unmarshal(data, &aux); err != nil {
+        return err
+    }
+
+    // Custom validation
+    if u.Name == "" {
+        return errors.New("name is required")
+    }
+
+    return nil
+}
+```
+
+**Why**: JSON marshaling only works with exported (capitalized) fields and proper tags.
+
+---
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Ignoring Errors
+
+**❌ Bad**: Silently ignoring errors
+
+```go
+// ❌ Bad: Ignored error
+user, _ := userService.GetUser(ctx, id)
+
+// ❌ Bad: Empty error handling
+if err != nil {
+    // Do nothing
+}
+
+// ❌ Bad: Generic panic
+if err != nil {
+    panic(err)  // Crashes entire program
+}
+```
+
+**✅ Good**: Explicit error handling
+
+```go
+// ✅ Good: Handle error explicitly
+user, err := userService.GetUser(ctx, id)
+if err != nil {
+    if errors.Is(err, ErrUserNotFound) {
+        return nil, fmt.Errorf("user not found: %w", err)
+    }
+    return nil, fmt.Errorf("failed to get user: %w", err)
+}
+
+// ✅ Good: Wrap errors with context
+if err := db.Save(&user).Error; err != nil {
+    return fmt.Errorf("save user %d: %w", user.ID, err)
+}
+
+// ✅ Good: Return errors, don't panic (except in main/init)
+func (s *UserService) CreateUser(ctx context.Context, req *CreateUserRequest) (*User, error) {
+    if req.Email == "" {
+        return nil, ErrEmailRequired  // Return error, don't panic
+    }
+    // ...
+}
+```
+
+**Why it matters**: Error handling is not optional in Go. Ignored errors lead to silent failures and hard-to-debug issues.
+
+---
+
+### Anti-Pattern 2: Using Global Mutable State
+
+**❌ Bad**: Global variables for application state
+
+```go
+// ❌ Bad: Global database connection
+var db *gorm.DB
+
+func init() {
+    db, _ = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+}
+
+func GetUser(id int64) (*User, error) {
+    var user User
+    db.First(&user, id)  // Uses global state
+    return &user, nil
+}
+```
+
+**✅ Good**: Dependency injection
+
+```go
+// ✅ Good: Inject dependencies
+type UserRepository struct {
+    db *gorm.DB
+}
+
+func NewUserRepository(db *gorm.DB) *UserRepository {
+    return &UserRepository{db: db}
+}
+
+func (r *UserRepository) GetUser(ctx context.Context, id int64) (*User, error) {
+    var user User
+    if err := r.db.WithContext(ctx).First(&user, id).Error; err != nil {
+        return nil, err
+    }
+    return &user, nil
+}
+
+// ✅ Good: Application struct holds dependencies
+type App struct {
+    db       *gorm.DB
+    userRepo *UserRepository
+    userSvc  *UserService
+}
+
+func NewApp(db *gorm.DB) *App {
+    userRepo := NewUserRepository(db)
+    userSvc := NewUserService(userRepo)
+
+    return &App{
+        db:       db,
+        userRepo: userRepo,
+        userSvc:  userSvc,
+    }
+}
+```
+
+**Why it matters**: Global state makes testing difficult, creates hidden dependencies, and causes race conditions in concurrent code.
+
+---
+
+### Anti-Pattern 3: Not Using Context for Cancellation
+
+**❌ Bad**: Long-running operations without cancellation
+
+```go
+// ❌ Bad: No cancellation mechanism
+func ProcessItems(items []Item) error {
+    for _, item := range items {
+        if err := processItem(item); err != nil {
+            return err
+        }
+        time.Sleep(time.Second)  // Can't be interrupted
+    }
+    return nil
+}
+```
+
+**✅ Good**: Context-aware operations
+
+```go
+// ✅ Good: Respect context cancellation
+func ProcessItems(ctx context.Context, items []Item) error {
+    for _, item := range items {
+        // Check context before each iteration
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        default:
+        }
+
+        if err := processItem(ctx, item); err != nil {
+            return err
+        }
+
+        // Interruptible sleep
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-time.After(time.Second):
+        }
+    }
+    return nil
+}
+
+// ✅ Good: HTTP handlers pass context to services
+func (h *Handler) ProcessItemsHandler(c *gin.Context) {
+    var req ProcessRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(400, gin.H{"error": err.Error()})
+        return
+    }
+
+    // Pass request context to service
+    if err := h.service.ProcessItems(c.Request.Context(), req.Items); err != nil {
+        if errors.Is(err, context.Canceled) {
+            c.JSON(499, gin.H{"error": "Request cancelled"})
+            return
+        }
+        c.JSON(500, gin.H{"error": "Processing failed"})
+        return
+    }
+
+    c.JSON(200, gin.H{"message": "Processing complete"})
+}
+```
+
+**Why it matters**: Context cancellation allows graceful shutdown, request timeouts, and user cancellation.
+
+---
+
+### Anti-Pattern 4: Creating Goroutines Without Bounds
+
+**❌ Bad**: Unbounded goroutine creation
+
+```go
+// ❌ Bad: Creates goroutine for every request
+func ProcessRequests(requests []Request) {
+    for _, req := range requests {
+        go processRequest(req)  // Could create 10,000+ goroutines
+    }
+}
+
+// ❌ Bad: No wait mechanism
+func main() {
+    go doWork()
+    // main exits immediately, goroutine never runs
+}
+```
+
+**✅ Good**: Bounded concurrency with worker pools
+
+```go
+// ✅ Good: Worker pool pattern
+func ProcessRequests(ctx context.Context, requests []Request) error {
+    numWorkers := 10
+    jobs := make(chan Request, len(requests))
+    results := make(chan error, len(requests))
+
+    // Start workers
+    var wg sync.WaitGroup
+    for i := 0; i < numWorkers; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for req := range jobs {
+                select {
+                case <-ctx.Done():
+                    return
+                default:
+                    results <- processRequest(ctx, req)
+                }
+            }
+        }()
+    }
+
+    // Send jobs
+    for _, req := range requests {
+        jobs <- req
+    }
+    close(jobs)
+
+    // Wait for completion
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
+
+    // Collect results
+    var errs []error
+    for err := range results {
+        if err != nil {
+            errs = append(errs, err)
+        }
+    }
+
+    if len(errs) > 0 {
+        return fmt.Errorf("processing errors: %v", errs)
+    }
+    return nil
+}
+
+// ✅ Good: errgroup for parallel operations
+import "golang.org/x/sync/errgroup"
+
+func ProcessRequests(ctx context.Context, requests []Request) error {
+    g, ctx := errgroup.WithContext(ctx)
+    g.SetLimit(10)  // Max 10 concurrent goroutines
+
+    for _, req := range requests {
+        req := req  // Capture loop variable
+        g.Go(func() error {
+            return processRequest(ctx, req)
+        })
+    }
+
+    return g.Wait()
+}
+```
+
+**Why it matters**: Unbounded goroutines can exhaust memory and CPU. Worker pools provide controlled concurrency.
+
+---
+
+### Anti-Pattern 5: Pointer Receivers for Small Structs
+
+**❌ Bad**: Pointers everywhere without reason
+
+```go
+// ❌ Bad: Pointer receiver for small, immutable struct
+type Point struct {
+    X, Y int
+}
+
+func (p *Point) String() string {  // Unnecessary pointer
+    return fmt.Sprintf("(%d, %d)", p.X, p.Y)
+}
+
+// ❌ Bad: Inconsistent receivers
+func (p Point) GetX() int { return p.X }   // Value receiver
+func (p *Point) GetY() int { return p.Y }  // Pointer receiver - inconsistent!
+```
+
+**✅ Good**: Consistent, appropriate receivers
+
+```go
+// ✅ Good: Value receiver for small, read-only methods
+type Point struct {
+    X, Y int
+}
+
+func (p Point) String() string {
+    return fmt.Sprintf("(%d, %d)", p.X, p.Y)
+}
+
+func (p Point) Distance() float64 {
+    return math.Sqrt(float64(p.X*p.X + p.Y*p.Y))
+}
+
+// ✅ Good: Pointer receiver when modifying or large struct
+type User struct {
+    ID        int64
+    Email     string
+    Name      string
+    CreatedAt time.Time
+    // ... many fields
+}
+
+func (u *User) SetEmail(email string) {  // Modifies state - use pointer
+    u.Email = email
+}
+
+func (u *User) IsValid() bool {  // Large struct - use pointer to avoid copying
+    return u.Email != "" && u.Name != ""
+}
+```
+
+**Rule of thumb**:
+- Use **pointer receivers** when:
+  - Method modifies the receiver
+  - Struct is large (>64 bytes)
+  - Consistency with other pointer receivers
+- Use **value receivers** when:
+  - Small struct (<64 bytes)
+  - Read-only method
+  - Type is a map, func, or chan
+
+**Why it matters**: Unnecessary pointers reduce performance (GC pressure) and make concurrency harder.
+
+---
+
+### Anti-Pattern 6: Not Handling Signals for Graceful Shutdown
+
+**❌ Bad**: Abrupt shutdown losing in-flight requests
+
+```go
+// ❌ Bad: No graceful shutdown
+func main() {
+    r := gin.Default()
+    r.GET("/ping", pingHandler)
+    r.Run(":8080")  // Blocks forever, no shutdown handling
+}
+```
+
+**✅ Good**: Graceful shutdown with signal handling
+
+```go
+// ✅ Good: Graceful shutdown
+func main() {
+    r := gin.Default()
+    r.GET("/ping", pingHandler)
+
+    srv := &http.Server{
+        Addr:    ":8080",
+        Handler: r,
+    }
+
+    // Start server in goroutine
+    go func() {
+        if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            log.Fatalf("listen: %s\n", err)
+        }
+    }()
+
+    // Wait for interrupt signal
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+    <-quit
+
+    log.Println("Shutting down server...")
+
+    // Graceful shutdown with 5s timeout
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    if err := srv.Shutdown(ctx); err != nil {
+        log.Fatal("Server forced to shutdown:", err)
+    }
+
+    log.Println("Server exiting")
+}
+```
+
+**Why it matters**: Graceful shutdown ensures in-flight requests complete and resources are cleaned up properly.
+
+---
+
+### Anti-Pattern 7: Using fmt.Sprintf for String Concatenation in Loops
+
+**❌ Bad**: Inefficient string building
+
+```go
+// ❌ Bad: fmt.Sprintf in loop (slow, many allocations)
+func BuildCSV(users []User) string {
+    csv := "id,name,email\n"
+    for _, user := range users {
+        csv += fmt.Sprintf("%d,%s,%s\n", user.ID, user.Name, user.Email)
+    }
+    return csv
+}
+```
+
+**✅ Good**: strings.Builder for efficient concatenation
+
+```go
+// ✅ Good: strings.Builder (fast, minimal allocations)
+func BuildCSV(users []User) string {
+    var builder strings.Builder
+    builder.WriteString("id,name,email\n")
+
+    for _, user := range users {
+        builder.WriteString(strconv.FormatInt(user.ID, 10))
+        builder.WriteByte(',')
+        builder.WriteString(user.Name)
+        builder.WriteByte(',')
+        builder.WriteString(user.Email)
+        builder.WriteByte('\n')
+    }
+
+    return builder.String()
+}
+
+// ✅ Good: Pre-allocate capacity if size known
+func BuildCSV(users []User) string {
+    var builder strings.Builder
+    builder.Grow(len(users) * 50)  // Estimate 50 bytes per line
+
+    builder.WriteString("id,name,email\n")
+    for _, user := range users {
+        fmt.Fprintf(&builder, "%d,%s,%s\n", user.ID, user.Name, user.Email)
+    }
+
+    return builder.String()
+}
+```
+
+**Performance comparison** (10,000 iterations):
+- `+=` operator: ~500ms, ~500MB allocations
+- `strings.Builder`: ~5ms, ~0.5MB allocations
+
+**Why it matters**: String concatenation with `+` creates new strings each time. `strings.Builder` grows a buffer efficiently.
+
+---
+
+## Complete Workflows
+
+### Workflow 1: REST API with Authentication and Authorization
+
+Full user authentication system with JWT.
+
+```go
+// models/user.go
+package models
+
+import "time"
+
+type User struct {
+    ID           int64     `json:"id" gorm:"primaryKey"`
+    Email        string    `json:"email" gorm:"uniqueIndex;not null"`
+    PasswordHash string    `json:"-" gorm:"not null"`
+    Name         string    `json:"name"`
+    Role         string    `json:"role" gorm:"default:'user'"`
+    CreatedAt    time.Time `json:"created_at"`
+    UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type LoginRequest struct {
+    Email    string `json:"email" binding:"required,email"`
+    Password string `json:"password" binding:"required,min=8"`
+}
+
+type RegisterRequest struct {
+    Email    string `json:"email" binding:"required,email"`
+    Password string `json:"password" binding:"required,min=8"`
+    Name     string `json:"name" binding:"required"`
+}
+
+type LoginResponse struct {
+    Token string `json:"token"`
+    User  *User  `json:"user"`
+}
+
+// services/auth_service.go
+package services
+
+import (
+    "context"
+    "errors"
+    "time"
+
+    "github.com/golang-jwt/jwt/v5"
+    "golang.org/x/crypto/bcrypt"
+    "myapp/models"
+    "myapp/repositories"
+)
+
+var (
+    ErrInvalidCredentials = errors.New("invalid credentials")
+    ErrEmailTaken         = errors.New("email already registered")
+)
+
+type AuthService struct {
+    userRepo  *repositories.UserRepository
+    jwtSecret []byte
+}
+
+func NewAuthService(userRepo *repositories.UserRepository, jwtSecret string) *AuthService {
+    return &AuthService{
+        userRepo:  userRepo,
+        jwtSecret: []byte(jwtSecret),
+    }
+}
+
+func (s *AuthService) Register(ctx context.Context, req *models.RegisterRequest) (*models.User, error) {
+    // Check if email exists
+    existing, _ := s.userRepo.FindByEmail(ctx, req.Email)
+    if existing != nil {
+        return nil, ErrEmailTaken
+    }
+
+    // Hash password
+    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+    if err != nil {
+        return nil, err
+    }
+
+    // Create user
+    user := &models.User{
+        Email:        req.Email,
+        PasswordHash: string(hashedPassword),
+        Name:         req.Name,
+        Role:         "user",
+    }
+
+    if err := s.userRepo.Create(ctx, user); err != nil {
+        return nil, err
+    }
+
+    return user, nil
+}
+
+func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error) {
+    // Find user
+    user, err := s.userRepo.FindByEmail(ctx, req.Email)
+    if err != nil {
+        return nil, ErrInvalidCredentials
+    }
+
+    // Verify password
+    if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+        return nil, ErrInvalidCredentials
+    }
+
+    // Generate JWT token
+    token, err := s.generateToken(user)
+    if err != nil {
+        return nil, err
+    }
+
+    return &models.LoginResponse{
+        Token: token,
+        User:  user,
+    }, nil
+}
+
+func (s *AuthService) generateToken(user *models.User) (string, error) {
+    claims := jwt.MapClaims{
+        "user_id": user.ID,
+        "email":   user.Email,
+        "role":    user.Role,
+        "exp":     time.Now().Add(24 * time.Hour).Unix(),
+    }
+
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+    return token.SignedString(s.jwtSecret)
+}
+
+func (s *AuthService) ValidateToken(tokenString string) (*models.User, error) {
+    token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, errors.New("invalid signing method")
+        }
+        return s.jwtSecret, nil
+    })
+
+    if err != nil || !token.Valid {
+        return nil, errors.New("invalid token")
+    }
+
+    claims, ok := token.Claims.(jwt.MapClaims)
+    if !ok {
+        return nil, errors.New("invalid claims")
+    }
+
+    userID := int64(claims["user_id"].(float64))
+    user, err := s.userRepo.FindByID(context.Background(), userID)
+    if err != nil {
+        return nil, err
+    }
+
+    return user, nil
+}
+
+// middleware/auth.go
+package middleware
+
+import (
+    "net/http"
+    "strings"
+
+    "github.com/gin-gonic/gin"
+    "myapp/services"
+)
+
+func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        authHeader := c.GetHeader("Authorization")
+        if authHeader == "" {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+            c.Abort()
+            return
+        }
+
+        // Extract token from "Bearer <token>"
+        parts := strings.Split(authHeader, " ")
+        if len(parts) != 2 || parts[0] != "Bearer" {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization format"})
+            c.Abort()
+            return
+        }
+
+        token := parts[1]
+        user, err := authService.ValidateToken(token)
+        if err != nil {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+            c.Abort()
+            return
+        }
+
+        // Store user in context
+        c.Set("currentUser", user)
+        c.Next()
+    }
+}
+
+// Require specific role
+func RequireRole(role string) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        user, exists := c.Get("currentUser")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+            c.Abort()
+            return
+        }
+
+        currentUser := user.(*models.User)
+        if currentUser.Role != role {
+            c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+            c.Abort()
+            return
+        }
+
+        c.Next()
+    }
+}
+
+// handlers/auth_handler.go
+package handlers
+
+import (
+    "net/http"
+
+    "github.com/gin-gonic/gin"
+    "myapp/models"
+    "myapp/services"
+)
+
+type AuthHandler struct {
+    authService *services.AuthService
+}
+
+func NewAuthHandler(authService *services.AuthService) *AuthHandler {
+    return &AuthHandler{authService: authService}
+}
+
+func (h *AuthHandler) Register(c *gin.Context) {
+    var req models.RegisterRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    user, err := h.authService.Register(c.Request.Context(), &req)
+    if err != nil {
+        if err == services.ErrEmailTaken {
+            c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Registration failed"})
+        return
+    }
+
+    c.JSON(http.StatusCreated, user)
+}
+
+func (h *AuthHandler) Login(c *gin.Context) {
+    var req models.LoginRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    resp, err := h.authService.Login(c.Request.Context(), &req)
+    if err != nil {
+        if err == services.ErrInvalidCredentials {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Login failed"})
+        return
+    }
+
+    c.JSON(http.StatusOK, resp)
+}
+
+func (h *AuthHandler) Me(c *gin.Context) {
+    user, _ := c.Get("currentUser")
+    c.JSON(http.StatusOK, user)
+}
+
+// cmd/server/main.go - Usage
+func main() {
+    // Setup dependencies
+    db := setupDatabase()
+    userRepo := repositories.NewUserRepository(db)
+    authService := services.NewAuthService(userRepo, os.Getenv("JWT_SECRET"))
+    authHandler := handlers.NewAuthHandler(authService)
+
+    // Setup router
+    r := gin.Default()
+
+    // Public routes
+    r.POST("/auth/register", authHandler.Register)
+    r.POST("/auth/login", authHandler.Login)
+
+    // Protected routes
+    protected := r.Group("/")
+    protected.Use(middleware.AuthMiddleware(authService))
+    {
+        protected.GET("/auth/me", authHandler.Me)
+
+        // Admin only
+        admin := protected.Group("/")
+        admin.Use(middleware.RequireRole("admin"))
+        {
+            admin.GET("/admin/users", userHandler.ListUsers)
+        }
+    }
+
+    r.Run(":8080")
+}
+```
+
+---
+
+### Workflow 2: Background Job Processing with Worker Pool
+
+**Scenario**: Process thousands of jobs concurrently with rate limiting
+
+```go
+// models/job.go
+package models
+
+import "time"
+
+type Job struct {
+    ID        int64     `json:"id"`
+    Type      string    `json:"type"`
+    Payload   []byte    `json:"payload"`
+    Status    string    `json:"status"`  // pending, processing, completed, failed
+    Attempts  int       `json:"attempts"`
+    CreatedAt time.Time `json:"created_at"`
+}
+
+// services/job_processor.go
+package services
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "sync"
+    "time"
+
+    "golang.org/x/sync/errgroup"
+    "golang.org/x/time/rate"
+)
+
+type JobProcessor struct {
+    numWorkers  int
+    rateLimiter *rate.Limiter
+    jobRepo     *repositories.JobRepository
+}
+
+func NewJobProcessor(numWorkers int, rateLimit rate.Limit, jobRepo *repositories.JobRepository) *JobProcessor {
+    return &JobProcessor{
+        numWorkers:  numWorkers,
+        rateLimiter: rate.NewLimiter(rateLimit, int(rateLimit)),
+        jobRepo:     jobRepo,
+    }
+}
+
+func (p *JobProcessor) Start(ctx context.Context) error {
+    ticker := time.NewTicker(5 * time.Second)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-ticker.C:
+            if err := p.processBatch(ctx); err != nil {
+                log.Printf("Error processing batch: %v", err)
+            }
+        }
+    }
+}
+
+func (p *JobProcessor) processBatch(ctx context.Context) error {
+    // Fetch pending jobs
+    jobs, err := p.jobRepo.GetPending(ctx, 100)
+    if err != nil {
+        return err
+    }
+
+    if len(jobs) == 0 {
+        return nil
+    }
+
+    log.Printf("Processing %d jobs", len(jobs))
+
+    // Process with worker pool
+    g, ctx := errgroup.WithContext(ctx)
+    g.SetLimit(p.numWorkers)
+
+    for _, job := range jobs {
+        job := job  // Capture loop variable
+
+        g.Go(func() error {
+            // Rate limiting
+            if err := p.rateLimiter.Wait(ctx); err != nil {
+                return err
+            }
+
+            return p.processJob(ctx, job)
+        })
+    }
+
+    return g.Wait()
+}
+
+func (p *JobProcessor) processJob(ctx context.Context, job *models.Job) error {
+    // Mark as processing
+    job.Status = "processing"
+    if err := p.jobRepo.Update(ctx, job); err != nil {
+        return err
+    }
+
+    // Process based on job type
+    var err error
+    switch job.Type {
+    case "send_email":
+        err = p.processSendEmail(ctx, job)
+    case "generate_report":
+        err = p.processGenerateReport(ctx, job)
+    default:
+        err = fmt.Errorf("unknown job type: %s", job.Type)
+    }
+
+    // Update status
+    if err != nil {
+        job.Status = "failed"
+        job.Attempts++
+        log.Printf("Job %d failed: %v", job.ID, err)
+    } else {
+        job.Status = "completed"
+        log.Printf("Job %d completed", job.ID)
+    }
+
+    return p.jobRepo.Update(ctx, job)
+}
+
+func (p *JobProcessor) processSendEmail(ctx context.Context, job *models.Job) error {
+    // Simulate email sending
+    time.Sleep(100 * time.Millisecond)
+    return nil
+}
+
+func (p *JobProcessor) processGenerateReport(ctx context.Context, job *models.Job) error {
+    // Simulate report generation
+    time.Sleep(500 * time.Millisecond)
+    return nil
+}
+
+// cmd/worker/main.go
+func main() {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    // Setup dependencies
+    db := setupDatabase()
+    jobRepo := repositories.NewJobRepository(db)
+
+    // Create processor with 10 workers, 50 jobs/second rate limit
+    processor := services.NewJobProcessor(10, 50, jobRepo)
+
+    // Handle graceful shutdown
+    go func() {
+        quit := make(chan os.Signal, 1)
+        signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+        <-quit
+        log.Println("Shutting down worker...")
+        cancel()
+    }()
+
+    // Start processing
+    log.Println("Worker started")
+    if err := processor.Start(ctx); err != nil && err != context.Canceled {
+        log.Fatalf("Worker error: %v", err)
+    }
+
+    log.Println("Worker stopped")
+}
+```
+
+---
+
+**Additional Workflows** (condensed):
+
+- **Workflow 3**: File upload to S3 with progress tracking (multipart upload, presigned URLs)
+- **Workflow 4**: WebSocket real-time chat with broadcast and presence
+- **Workflow 5**: Database migration system with versioning and rollback
+
+---
+
+## 2025-Specific Patterns
+
+### Pattern 1: Go 1.23+ Generic Constraints
+
+```go
+// Go 1.23+: More flexible generic constraints
+package utils
+
+import "constraints"
+
+// Generic pagination
+type Page[T any] struct {
+    Items      []T   `json:"items"`
+    Total      int64 `json:"total"`
+    Page       int   `json:"page"`
+    PageSize   int   `json:"page_size"`
+    TotalPages int   `json:"total_pages"`
+}
+
+// Generic filter function
+func Filter[T any](items []T, predicate func(T) bool) []T {
+    result := make([]T, 0)
+    for _, item := range items {
+        if predicate(item) {
+            result = append(result, item)
+        }
+    }
+    return result
+}
+
+// Generic map function
+func Map[T, U any](items []T, mapper func(T) U) []U {
+    result := make([]U, len(items))
+    for i, item := range items {
+        result[i] = mapper(item)
+    }
+    return result
+}
+
+// Generic repository interface
+type Repository[T any, ID constraints.Ordered] interface {
+    FindByID(ctx context.Context, id ID) (*T, error)
+    FindAll(ctx context.Context) ([]T, error)
+    Create(ctx context.Context, entity *T) error
+    Update(ctx context.Context, entity *T) error
+    Delete(ctx context.Context, id ID) error
+}
+```
+
+### Pattern 2: Structured Logging with slog (Go 1.21+)
+
+```go
+// Go 1.21+: Built-in structured logging
+import "log/slog"
+
+func setupLogger() *slog.Logger {
+    handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+        Level: slog.LevelInfo,
+    })
+    return slog.New(handler)
+}
+
+func (h *UserHandler) GetUser(c *gin.Context) {
+    logger := c.MustGet("logger").(*slog.Logger)
+
+    userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+    if err != nil {
+        logger.Warn("invalid user ID",
+            slog.String("param", c.Param("id")),
+            slog.String("error", err.Error()),
+        )
+        c.JSON(400, gin.H{"error": "Invalid user ID"})
+        return
+    }
+
+    user, err := h.userService.GetUser(c.Request.Context(), userID)
+    if err != nil {
+        logger.Error("failed to get user",
+            slog.Int64("user_id", userID),
+            slog.String("error", err.Error()),
+        )
+        c.JSON(500, gin.H{"error": "Internal error"})
+        return
+    }
+
+    logger.Info("user retrieved",
+        slog.Int64("user_id", userID),
+        slog.String("email", user.Email),
+    )
+
+    c.JSON(200, user)
+}
+```
+
+### Pattern 3: OpenTelemetry Tracing (2025 Standard)
+
+```go
+// 2025: OpenTelemetry for distributed tracing
+import (
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
+)
+
+var tracer = otel.Tracer("myapp")
+
+func (s *UserService) GetUser(ctx context.Context, id int64) (*User, error) {
+    ctx, span := tracer.Start(ctx, "UserService.GetUser")
+    defer span.End()
+
+    span.SetAttributes(attribute.Int64("user.id", id))
+
+    user, err := s.userRepo.FindByID(ctx, id)
+    if err != nil {
+        span.RecordError(err)
+        return nil, err
+    }
+
+    span.SetAttributes(attribute.String("user.email", user.Email))
+    return user, nil
+}
+```
+
+**Additional 2025 Patterns** (condensed):
+- **Pattern 4**: GORM v2 with improved associations and hooks
+- **Pattern 5**: Fiber v3 with enhanced performance
+- **Pattern 6**: Chi v5 with better middleware composition
+
+---
+
 ## References
 
 - [Go Official Documentation](https://go.dev/doc/)
@@ -1025,6 +2454,8 @@ CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/server cmd/server
 - [Fiber Framework](https://gofiber.io/)
 - [GORM Documentation](https://gorm.io/)
 - [Go Concurrency Patterns](https://go.dev/blog/pipelines)
+- [OpenTelemetry Go](https://opentelemetry.io/docs/instrumentation/go/)
+- [Go slog Package](https://pkg.go.dev/log/slog)
 
 ---
 
