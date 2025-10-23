@@ -67,7 +67,9 @@ cd adaptive-claude-agents
 
 ### アップデート
 
-すでにインストール済みの場合、最新のAGGRESSIVEモード機能を取得：
+すでにインストール済みの場合、以下の2ステップで最新のAGGRESSIVEモード機能を取得：
+
+#### ステップ1: グローバルツールの更新
 
 ```bash
 # macOS
@@ -81,9 +83,32 @@ cd ~/.config/claude/skills/adaptive-claude-agents
 
 **更新内容**:
 
-- SUBAGENT_GUIDE.md の自動生成（フレームワーク別）
-- CLAUDE.md への AGGRESSIVE ポリシー自動設定
-- 3+ファイルタスクでのサブエージェント自動起動
+- 最新の検出ロジックとテンプレート
+- 強化された AGGRESSIVE ポリシー設定
+- バグ修正と改善
+
+#### ステップ2: 各プロジェクトの更新（重要！）
+
+**以前に `analyze_project.py` を実行したすべてのプロジェクト**で、再実行して新機能を取得：
+
+```bash
+# プロジェクトディレクトリに移動
+cd /path/to/your/project
+
+# macOS
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --auto
+
+# Linux/WSL
+python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py . --auto
+```
+
+**これにより**:
+
+1. ✅ 最新のフレームワーク別ワークフローで `.claude/agents/SUBAGENT_GUIDE.md` を再生成
+2. ✅ プロジェクトの `CLAUDE.md` に AGGRESSIVE ポリシーを追加（未設定の場合）
+3. ✅ すべてのサブエージェントテンプレートを最新のベストプラクティスで更新
+
+**すべてのアクティブなプロジェクトでステップ2を繰り返して**、どこでもプロアクティブなサブエージェント活用を有効化！
 
 ### 使い方
 

@@ -67,7 +67,9 @@ cd adaptive-claude-agents
 
 ### Updating
 
-Already installed? Update to get the latest AGGRESSIVE mode features:
+Already installed? Follow these 2 steps to get the latest AGGRESSIVE mode features:
+
+#### Step 1: Update the Global Tool
 
 ```bash
 # macOS
@@ -81,9 +83,32 @@ cd ~/.config/claude/skills/adaptive-claude-agents
 
 **What's updated**:
 
-- Auto-generated SUBAGENT_GUIDE.md (framework-specific)
-- AGGRESSIVE policy auto-configured in your CLAUDE.md
-- Proactive subagent triggers for 3+ file tasks
+- Latest detection logic and templates
+- Enhanced AGGRESSIVE policy configuration
+- Bug fixes and improvements
+
+#### Step 2: Update Each Project (IMPORTANT!)
+
+**For every project where you previously ran `analyze_project.py`**, re-run it to get the new features:
+
+```bash
+# Navigate to your project
+cd /path/to/your/project
+
+# macOS
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --auto
+
+# Linux/WSL
+python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py . --auto
+```
+
+**This will**:
+
+1. ✅ Regenerate `.claude/agents/SUBAGENT_GUIDE.md` with latest framework-specific workflows
+2. ✅ Add AGGRESSIVE policy to your project's `CLAUDE.md` (if not already present)
+3. ✅ Update all subagent templates with latest best practices
+
+**Repeat Step 2 for all active projects** to enable proactive subagent usage everywhere!
 
 ### Usage
 
