@@ -736,48 +736,734 @@ project/
 
 ## Troubleshooting
 
-### Issue: "Class not found"
+### Issue 1: "Class not found" or Autoload Errors
 
-**Cause**: PSR-4 autoloading not configured correctly
+**Cause**: PSR-4 autoloading not configured correctly in composer.json
 
-**Solution**: Check `composer.json` autoload configuration
+**Solutions**:
 
 ```json
+// composer.json - Correct PSR-4 configuration
 {
     "autoload": {
         "psr-4": {
             "App\\": "app/"
-        }
+        },
+        "files": [
+            "app/Helpers/functions.php"
+        ]
     }
 }
 ```
 
-Run `composer dump-autoload` after changes.
-
-### Issue: "SQLSTATE[HY000] [2002] Connection refused"
-
-**Cause**: Database connection configuration issue
-
-**Solution**: Verify database credentials in `.env` and ensure MySQL is running
-
 ```bash
-# Check MySQL is running
-docker ps | grep mysql
-# Or
-systemctl status mysql
+# After composer.json changes, always run:
+composer dump-autoload
+
+# Clear Composer cache if issues persist:
+composer clear-cache
+composer dump-autoload --optimize
 ```
-
-### Issue: Session data not persisting
-
-**Cause**: Session not started or session configuration issue
-
-**Solution**: Ensure `session_start()` is called before accessing `$_SESSION`
 
 ```php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+// ❌ Bad: Namespace doesn't match directory structure
+// File: app/controllers/UserController.php
+namespace App\Controllers;  // Wrong: lowercase 'controllers' folder
+
+// ✅ Good: Namespace matches directory
+// File: app/Controllers/UserController.php
+namespace App\Controllers;  // Correct: uppercase 'Controllers' folder
+```
+
+---
+
+### Issue 2: "SQLSTATE[HY000] [2002] Connection refused"
+
+**Cause**: Database connection failure (MySQL not running, wrong credentials, or firewall)
+
+**Solutions**:
+
+```bash
+# Solution 1: Check if MySQL is running
+docker ps | grep mysql
+# Or for system MySQL
+systemctl status mysql
+# Or on macOS
+brew services list
+
+# Solution 2: Test connection with mysql client
+mysql -h 127.0.0.1 -u root -p
+
+# Solution 3: Check MySQL port
+netstat -an | grep 3306
+```
+
+```php
+// ✅ Good: Robust database connection with error handling
+class Database
+{
+    private static ?PDO $pdo = null;
+
+    public static function connect(): PDO
+    {
+        if (self::$pdo !== null) {
+            return self::$pdo;
+        }
+
+        $host = $_ENV['DB_HOST'] ?? '127.0.0.1';
+        $port = $_ENV['DB_PORT'] ?? '3306';
+        $dbname = $_ENV['DB_NAME'] ?? 'myapp';
+        $user = $_ENV['DB_USER'] ?? 'root';
+        $password = $_ENV['DB_PASSWORD'] ?? '';
+
+        $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4";
+
+        try {
+            self::$pdo = new PDO($dsn, $user, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+            ]);
+        } catch (PDOException $e) {
+            error_log("Database connection failed: " . $e->getMessage());
+            http_response_code(500);
+            die("Database connection failed. Please contact support.");
+        }
+
+        return self::$pdo;
+    }
 }
 ```
+
+---
+
+### Issue 3: Session data not persisting between requests
+
+**Cause**: Session not started, session configuration issue, or cookies blocked
+
+**Solutions**:
+
+```php
+// ❌ Bad: No session_start()
+$_SESSION['user_id'] = 123;  // ERROR: Session not started!
+
+// ✅ Good: Always check and start session
+if (session_status() === PHP_SESSION_NONE) {
+    session_start([
+        'cookie_lifetime' => 86400,  // 24 hours
+        'cookie_secure' => true,      // HTTPS only
+        'cookie_httponly' => true,    // No JS access
+        'cookie_samesite' => 'Strict' // CSRF protection
+    ]);
+}
+
+$_SESSION['user_id'] = 123;  // Works!
+
+// ✅ Good: Session wrapper class
+class Session
+{
+    public static function start(): void
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start([
+                'cookie_lifetime' => 86400,
+                'cookie_secure' => isset($_SERVER['HTTPS']),
+                'cookie_httponly' => true,
+                'cookie_samesite' => 'Strict'
+            ]);
+        }
+    }
+
+    public static function set(string $key, mixed $value): void
+    {
+        self::start();
+        $_SESSION[$key] = $value;
+    }
+
+    public static function get(string $key, mixed $default = null): mixed
+    {
+        self::start();
+        return $_SESSION[$key] ?? $default;
+    }
+
+    public static function destroy(): void
+    {
+        self::start();
+        $_SESSION = [];
+        session_destroy();
+    }
+}
+```
+
+---
+
+### Issue 4: SQL Injection Vulnerabilities
+
+**Cause**: String concatenation in SQL queries instead of prepared statements
+
+**Solutions**:
+
+```php
+// ❌ DANGEROUS: SQL injection vulnerability!
+$email = $_POST['email'];
+$query = "SELECT * FROM users WHERE email = '$email'";  // NEVER DO THIS!
+$result = $pdo->query($query);
+// Attacker input: ' OR '1'='1
+
+// ✅ Good: Prepared statements with named parameters
+$email = $_POST['email'];
+$stmt = $pdo->prepare("SELECT * FROM users WHERE email = :email");
+$stmt->execute(['email' => $email]);
+$user = $stmt->fetch();
+
+// ✅ Good: Prepared statements with positional parameters
+$stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND active = ?");
+$stmt->execute([$email, 1]);
+$user = $stmt->fetch();
+
+// ✅ Good: Model with built-in prepared statements
+class User
+{
+    public function __construct(private readonly PDO $pdo) {}
+
+    public function findByEmail(string $email): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT id, name, email, created_at FROM users WHERE email = :email LIMIT 1"
+        );
+        $stmt->execute(['email' => $email]);
+        $user = $stmt->fetch();
+
+        return $user ?: null;
+    }
+
+    public function create(array $data): int
+    {
+        $stmt = $this->pdo->prepare(
+            "INSERT INTO users (name, email, password_hash, created_at)
+             VALUES (:name, :email, :password_hash, NOW())"
+        );
+
+        $stmt->execute([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password_hash' => $data['password_hash']
+        ]);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+}
+```
+
+---
+
+### Issue 5: XSS (Cross-Site Scripting) Attacks
+
+**Cause**: Outputting user data without escaping in HTML
+
+**Solutions**:
+
+```php
+// ❌ DANGEROUS: XSS vulnerability
+<?php echo $_GET['username']; ?>
+// Attacker input: <script>alert('XSS')</script>
+
+// ✅ Good: Always escape output
+<?php echo htmlspecialchars($_GET['username'], ENT_QUOTES, 'UTF-8'); ?>
+
+// ✅ Good: Create helper function
+function e(?string $value): string
+{
+    return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+}
+
+// Usage in views:
+<h1>Welcome, <?= e($user['name']) ?></h1>
+<p>Email: <?= e($user['email']) ?></p>
+
+// ✅ Good: Escape in JSON responses
+header('Content-Type: application/json');
+echo json_encode([
+    'name' => $user['name'],  // json_encode automatically escapes
+    'email' => $user['email']
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+// ❌ Bad: Using echo instead of json_encode
+echo '{"name": "' . $user['name'] . '"}';  // XSS vulnerable!
+
+// ✅ Good: Content Security Policy header
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
+```
+
+---
+
+### Issue 6: CSRF (Cross-Site Request Forgery) Attacks
+
+**Cause**: No CSRF token validation on POST/PUT/DELETE requests
+
+**Solutions**:
+
+```php
+// ✅ Good: CSRF token generation and validation
+class CsrfProtection
+{
+    public static function generateToken(): string
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        if (!isset($_SESSION['csrf_token'])) {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+
+        return $_SESSION['csrf_token'];
+    }
+
+    public static function validateToken(string $token): bool
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+    }
+}
+
+// Usage in forms:
+?>
+<form method="POST" action="/users">
+    <input type="hidden" name="csrf_token" value="<?= CsrfProtection::generateToken() ?>">
+    <input type="text" name="name" required>
+    <button type="submit">Submit</button>
+</form>
+
+<?php
+// Usage in controller:
+class UserController
+{
+    public function store(): void
+    {
+        // ALWAYS validate CSRF token
+        if (!CsrfProtection::validateToken($_POST['csrf_token'] ?? '')) {
+            http_response_code(403);
+            die('Invalid CSRF token');
+        }
+
+        // Process form...
+    }
+}
+
+// ✅ Good: AJAX with CSRF token
+?>
+<script>
+const csrfToken = '<?= CsrfProtection::generateToken() ?>';
+
+fetch('/api/users', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+    },
+    body: JSON.stringify({ name: 'Alice' })
+});
+</script>
+```
+
+---
+
+### Issue 7: "headers already sent" Error
+
+**Cause**: Output before header() calls (whitespace, echo, BOM)
+
+**Solutions**:
+
+```php
+// ❌ Bad: Output before header
+<?php
+echo "Debug info";  // Output!
+header('Location: /users');  // ERROR: headers already sent
+
+// ❌ Bad: Whitespace before <?php
+ <?php  // Space before tag!
+header('Location: /users');  // ERROR
+
+// ✅ Good: No output before headers
+<?php
+declare(strict_types=1);
+
+// Redirect immediately
+header('Location: /users');
+exit;
+
+// ✅ Good: Use output buffering
+<?php
+ob_start();  // Start output buffering
+
+echo "Some content";
+// ... more output
+
+// Set headers anytime
+header('Content-Type: application/json');
+
+ob_end_flush();  // Send buffered output
+
+// ✅ Good: Check if headers sent
+if (!headers_sent()) {
+    header('HTTP/1.1 404 Not Found');
+    header('Content-Type: application/json');
+}
+
+echo json_encode(['error' => 'Not found']);
+
+// ✅ Good: Remove BOM from files
+// Use editor "Save without BOM" option
+// Or use this script to detect:
+<?php
+$file = file_get_contents(__FILE__);
+if (substr($file, 0, 3) === "\xEF\xBB\xBF") {
+    die("BOM detected! Save file without BOM");
+}
+```
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Not Using Prepared Statements
+
+```php
+// ❌ Bad: SQL injection vulnerability
+$query = "SELECT * FROM users WHERE email = '{$_POST['email']}'";
+
+// ✅ Good: Prepared statements
+$stmt = $pdo->prepare("SELECT * FROM users WHERE email = :email");
+$stmt->execute(['email' => $_POST['email']]);
+```
+
+### Anti-Pattern 2: Not Escaping Output
+
+```php
+// ❌ Bad: XSS vulnerability
+<h1><?= $user['name'] ?></h1>
+
+// ✅ Good: Always escape
+<h1><?= htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8') ?></h1>
+```
+
+### Anti-Pattern 3: No CSRF Protection
+
+```php
+// ❌ Bad: No CSRF token
+<form method="POST"><input name="email"></form>
+
+// ✅ Good: CSRF token
+<form method="POST">
+    <input type="hidden" name="csrf" value="<?= CsrfProtection::generate() ?>">
+    <input name="email">
+</form>
+```
+
+### Anti-Pattern 4: Weak Password Hashing
+
+```php
+// ❌ Bad: MD5/SHA1 (insecure!)
+$hash = md5($_POST['password']);
+
+// ✅ Good: Argon2id (strongest)
+$hash = password_hash($_POST['password'], PASSWORD_ARGON2ID);
+
+// Verify:
+if (password_verify($inputPassword, $hash)) {
+    // Login success
+}
+```
+
+### Anti-Pattern 5: Global State and Superglobals Everywhere
+
+```php
+// ❌ Bad: Direct superglobal access
+function getUser() {
+    return $_SESSION['user'];  // Tight coupling
+}
+
+// ✅ Good: Dependency injection
+class UserService {
+    public function __construct(private readonly SessionInterface $session) {}
+
+    public function getUser(): ?User {
+        return $this->session->get('user');
+    }
+}
+```
+
+### Anti-Pattern 6: No Type Declarations
+
+```php
+// ❌ Bad: No types
+function calculateTotal($items) {
+    $total = 0;
+    foreach ($items as $item) {
+        $total += $item['price'];
+    }
+    return $total;
+}
+
+// ✅ Good: Strict types (PHP 8.2+)
+declare(strict_types=1);
+
+function calculateTotal(array $items): float {
+    $total = 0.0;
+    foreach ($items as $item) {
+        $total += (float) $item['price'];
+    }
+    return $total;
+}
+```
+
+### Anti-Pattern 7: Not Using Readonly Properties (PHP 8.1+)
+
+```php
+// ❌ Bad: Mutable properties
+class User {
+    public function __construct(
+        public int $id,
+        public string $email
+    ) {}
+}
+$user->id = 999;  // Can be changed!
+
+// ✅ Good: Readonly properties
+class User {
+    public function __construct(
+        public readonly int $id,
+        public readonly string $email
+    ) {}
+}
+$user->id = 999;  // Error: Cannot modify readonly property
+```
+
+---
+
+## Complete Workflows
+
+### Workflow 1: User Authentication System
+
+```php
+// 1. Database Schema
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+// 2. User Model
+class User {
+    public function __construct(private readonly PDO $pdo) {}
+
+    public function create(string $email, string $password): int {
+        $hash = password_hash($password, PASSWORD_ARGON2ID);
+        $stmt = $this->pdo->prepare(
+            "INSERT INTO users (email, password_hash) VALUES (:email, :hash)"
+        );
+        $stmt->execute(['email' => $email, 'hash' => $hash]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    public function findByEmail(string $email): ?array {
+        $stmt = $this->pdo->prepare("SELECT * FROM users WHERE email = :email");
+        $stmt->execute(['email' => $email]);
+        return $stmt->fetch() ?: null;
+    }
+}
+
+// 3. Auth Controller
+class AuthController {
+    public function __construct(
+        private readonly User $userModel,
+        private readonly Session $session
+    ) {}
+
+    public function register(): void {
+        if (!CsrfProtection::validate($_POST['csrf'] ?? '')) {
+            http_response_code(403);
+            die('Invalid CSRF');
+        }
+
+        $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
+        if (!$email) {
+            http_response_code(422);
+            echo json_encode(['error' => 'Invalid email']);
+            return;
+        }
+
+        $userId = $this->userModel->create($email, $_POST['password']);
+        $this->session->set('user_id', $userId);
+
+        header('Location: /dashboard');
+    }
+
+    public function login(): void {
+        if (!CsrfProtection::validate($_POST['csrf'] ?? '')) {
+            http_response_code(403);
+            die('Invalid CSRF');
+        }
+
+        $user = $this->userModel->findByEmail($_POST['email']);
+        if (!$user || !password_verify($_POST['password'], $user['password_hash'])) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Invalid credentials']);
+            return;
+        }
+
+        $this->session->set('user_id', $user['id']);
+        header('Location: /dashboard');
+    }
+
+    public function logout(): void {
+        $this->session->destroy();
+        header('Location: /login');
+    }
+}
+```
+
+### Workflow 2: REST API with JSON
+
+```php
+// API Controller
+class ApiController {
+    public function __construct(private readonly User $userModel) {
+        header('Content-Type: application/json');
+    }
+
+    public function index(): void {
+        $page = (int) ($_GET['page'] ?? 1);
+        $limit = 20;
+        $offset = ($page - 1) * $limit;
+
+        $stmt = $this->userModel->getPdo()->prepare(
+            "SELECT id, email, created_at FROM users LIMIT :limit OFFSET :offset"
+        );
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        echo json_encode([
+            'data' => $stmt->fetchAll(),
+            'page' => $page,
+            'per_page' => $limit
+        ]);
+    }
+
+    public function store(): void {
+        $input = json_decode(file_get_contents('php://input'), true);
+
+        if (!isset($input['email']) || !filter_var($input['email'], FILTER_VALIDATE_EMAIL)) {
+            http_response_code(422);
+            echo json_encode(['error' => 'Invalid email']);
+            return;
+        }
+
+        $userId = $this->userModel->create($input['email'], $input['password']);
+
+        http_response_code(201);
+        echo json_encode(['id' => $userId]);
+    }
+}
+```
+
+---
+
+## 2025-Specific Patterns
+
+### Pattern 1: PHP 8.2+ Readonly Classes
+
+```php
+readonly class UserDTO {
+    public function __construct(
+        public int $id,
+        public string $name,
+        public string $email
+    ) {}
+}
+
+$user = new UserDTO(1, 'Alice', 'alice@example.com');
+// All properties are readonly!
+```
+
+### Pattern 2: PHP 8.1+ Enums
+
+```php
+enum UserRole: string {
+    case ADMIN = 'admin';
+    case USER = 'user';
+    case GUEST = 'guest';
+
+    public function can(string $permission): bool {
+        return match($this) {
+            self::ADMIN => true,
+            self::USER => in_array($permission, ['read', 'write']),
+            self::GUEST => $permission === 'read'
+        };
+    }
+}
+
+// Usage
+$role = UserRole::ADMIN;
+if ($role->can('delete')) {
+    // Allow deletion
+}
+```
+
+### Pattern 3: PHP 8.0+ Attributes (Annotations)
+
+```php
+#[Route('/users', methods: ['GET'])]
+class UserController {
+    #[Middleware('auth')]
+    public function index(): void {
+        // ...
+    }
+}
+```
+
+### Pattern 4: PHP 8.0+ Named Arguments
+
+```php
+// Readable function calls
+$user = new User(
+    id: 1,
+    email: 'alice@example.com',
+    name: 'Alice'
+);
+
+password_hash(
+    password: $input,
+    algo: PASSWORD_ARGON2ID,
+    options: ['memory_cost' => 2048, 'time_cost' => 4]
+);
+```
+
+### Pattern 5: PHP 8.0+ Match Expression
+
+```php
+// Cleaner than switch
+$message = match($statusCode) {
+    200 => 'OK',
+    404 => 'Not Found',
+    500 => 'Server Error',
+    default => 'Unknown'
+};
+```
+
+### Pattern 6: PHP 8.2+ Disjunctive Normal Form (DNF) Types
+
+```php
+function process((User|Admin)&Authenticatable $entity): void {
+    // $entity must be (User OR Admin) AND Authenticatable
+}
+```
+
+---
 
 ## References
 
