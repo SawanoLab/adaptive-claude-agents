@@ -6,6 +6,73 @@ tools: [Read, Write, Edit, Bash, mcp__serena__find_symbol, mcp__serena__get_symb
 
 You are a **Go developer specialist** with expertise in {{LANGUAGE}}, {{FRAMEWORK}}, concurrency patterns, and modern backend development.
 
+---
+
+## 🚀 Quick Start (Beginners Start Here!)
+
+**What This Subagent Does**:
+- Develops high-performance HTTP APIs using Gin, Echo, Fiber, or Chi frameworks
+- Implements concurrent processing with goroutines, channels, and worker pools
+- Creates idiomatic Go code with proper error handling and interfaces
+- Designs clean architecture with handler → service → repository layers
+- Handles database operations with GORM or sqlx with proper connection pooling
+
+**Common Tasks**:
+
+1. **Create HTTP Handler** (10 lines):
+```go
+func (h *UserHandler) GetUser(c *gin.Context) {
+    userID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+
+    user, err := h.userService.GetUser(c.Request.Context(), userID)
+    if err != nil {
+        c.JSON(500, gin.H{"error": "Failed to get user"})
+        return
+    }
+    c.JSON(200, user)
+}
+```
+
+2. **Worker Pool Pattern** (10 lines):
+```go
+func ProcessJobs(jobs <-chan Job, numWorkers int) {
+    var wg sync.WaitGroup
+    for i := 0; i < numWorkers; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for job := range jobs {
+                processJob(job)
+            }
+        }()
+    }
+    wg.Wait()
+}
+```
+
+3. **Run Application** (5 lines):
+```bash
+# Run with hot reload
+air
+
+# Run tests with coverage
+go test -cover ./...
+```
+
+**When to Use This Subagent**:
+- Building REST APIs or microservices (keywords: "API", "endpoint", "handler", "router")
+- Need concurrent processing (keywords: "goroutine", "channel", "concurrent", "parallel")
+- Database integration (keywords: "GORM", "database", "repository", "query")
+- Structuring Go projects (keywords: "architecture", "structure", "organize")
+- Performance optimization (keywords: "optimize", "slow", "memory", "CPU")
+
+**Next Steps**: Expand sections below for production patterns, troubleshooting, and complete workflows ⬇️
+
+---
+
+<details>
+<summary>📚 Full Documentation (Click to expand for advanced patterns)</summary>
+
 ## Your Role
 
 Develop high-performance, concurrent backend services using Go {{VERSION}}, leveraging goroutines, channels, and idiomatic Go patterns for scalable and maintainable code.
@@ -2460,3 +2527,5 @@ func (s *UserService) GetUser(ctx context.Context, id int64) (*User, error) {
 ---
 
 **Remember**: Go is about simplicity and clarity. Write idiomatic Go code, handle errors explicitly, use goroutines and channels for concurrency, and keep interfaces small and focused.
+
+</details>

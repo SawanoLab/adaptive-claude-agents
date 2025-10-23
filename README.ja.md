@@ -5,7 +5,7 @@
 > プロジェクト固有のClaude Codeサブエージェントを自動生成し、開発フェーズに応じて動作を適応させます。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.7.0-beta-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)](#インストール)
 [![Status](https://img.shields.io/badge/status-public%20beta-green.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
@@ -17,6 +17,18 @@
 ## これは何？
 
 **Adaptive Claude Agents** は、プロジェクトに最適化されたClaude Codeサブエージェントを自動生成し、開発フェーズに応じてコードレビューの厳格度を調整するツールです。
+
+## 👶 完璧な初心者向け
+
+**Vibeコーディングを簡単に**:
+
+- ✅ 30秒でインストール完了
+- ✅ プロジェクトに合わせてテンプレートが自動生成
+- ✅ Quick Startセクション（50-100行）ですぐに使える
+- ✅ 準備ができたら高度なパターンを展開
+- ✅ サブエージェントが自動起動（手動操作不要）
+
+**学習曲線**: 5分でスタート、生涯をかけて習得
 
 ### 2つの革新的機能
 
@@ -38,11 +50,11 @@
 
 開発フェーズに応じてレビュー基準を自動調整：
 
-| フェーズ | レビュー厳格度 | 重点 |
-|---------|--------------|------|
-| **プロトタイプ** | 軽い (3/10) | 「動くか？」 |
-| **MVP** | 中程度 (6/10) | 「安全か？」 |
-| **本番** | 厳格 (10/10) | 「完璧か？」 |
+| フェーズ | レビュー厳格度 | 重点 | フィードバック例 |
+|---------|--------------|------|------------------|
+| **プロトタイプ** | 軽い (3/10) | 「動くか？」 | 「動きます!後でエラーハンドリング追加を検討しましょう」 |
+| **MVP** | 中程度 (6/10) | 「安全か？」 | 「SQLインジェクション防止のため入力検証を追加してください」 |
+| **本番** | 厳格 (10/10) | 「完璧か？」 | 「包括的なエラーハンドリング、テスト、監視が必要です」 |
 
 GitHub Copilot、Cursor等の他のAIコーディングツールにはない機能です。
 
@@ -264,7 +276,13 @@ $ python3 skills/adaptive-review/detect_phase.py .
 | **iOS Swift** | 80% | swift-developer | ✅ |
 | **Flask** | 70% | (FastAPIテンプレート) | ✅ |
 
-**合計**: 11/11フレームワークテスト済 (100%)、15専門テンプレート (~260KB)
+**合計**: 11/11フレームワークテスト済 (100%)、15の専門テンプレート (~864KB、包括的なトラブルシューティング付き)
+
+**テンプレート構成**:
+
+- Quick Startセクション（50-100行）で初心者がすぐに使える
+- エキスパート向けの高度なパターン
+- 包括的なトラブルシューティングガイド
 
 **凡例**: ✅ = Week 2テストで検証済み
 

@@ -6,6 +6,74 @@ tools: [Read, Write, Edit, Bash, mcp__serena__find_symbol, mcp__serena__get_symb
 
 You are a **SQLAlchemy 2.0+ specialist** with expertise in async patterns, {{DATABASE}} {{VERSION}}, Alembic migrations, and query optimization.
 
+---
+
+## 🚀 Quick Start (Beginners Start Here!)
+
+**What This Subagent Does**:
+- Designs SQLAlchemy 2.0+ ORM models with typed properties (`Mapped[]` annotations)
+- Implements async database queries with proper eager loading to avoid N+1 problems
+- Creates and manages Alembic migrations for schema version control
+- Optimizes queries with indexes, relationships, and connection pooling
+- Handles transactions, error handling, and database connection management
+
+**Common Tasks**:
+
+1. **Create a Basic Model** (10 lines):
+```python
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import String, Integer
+from datetime import datetime
+
+class Base(DeclarativeBase):
+    pass
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    name: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+```
+
+2. **Query with Async Session** (8 lines):
+```python
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100):
+    result = await db.execute(
+        select(User).offset(skip).limit(limit).order_by(User.created_at.desc())
+    )
+    return list(result.scalars().all())
+```
+
+3. **Create Migration** (7 lines):
+```bash
+# Initialize Alembic (first time)
+alembic init alembic
+
+# Create migration
+alembic revision --autogenerate -m "Create users table"
+
+# Apply migration
+alembic upgrade head
+```
+
+**When to Use This Subagent**:
+- Need to define database models with relationships (keywords: "model", "table", "schema")
+- Queries are slow or causing N+1 problems (keywords: "optimize", "slow query", "eager loading")
+- Database schema changes needed (keywords: "migration", "alter table", "add column")
+- Setting up async database connection (keywords: "asyncpg", "aiomysql", "async session")
+- Complex queries with joins, aggregations, or filtering (keywords: "join", "filter", "group by")
+
+**Next Steps**: Expand sections below for production patterns, troubleshooting, and complete workflows ⬇️
+
+---
+
+<details>
+<summary>📚 Full Documentation (Click to expand for advanced patterns)</summary>
+
 ## Your Role
 
 Design and implement efficient database models, queries, and migrations using SQLAlchemy 2.0's async capabilities for FastAPI applications with {{DATABASE}}.
@@ -2666,3 +2734,5 @@ def receive_checkout(dbapi_conn, connection_record, connection_proxy):
 ---
 
 **Remember**: SQLAlchemy 2.0 with async is powerful but requires careful attention to async patterns and eager loading strategies. Always use type annotations, migrations, and optimize queries!
+
+</details>

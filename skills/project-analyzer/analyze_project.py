@@ -24,6 +24,7 @@ from typing import List, Optional
 
 # Import detection logic
 from detect_stack import detect_tech_stack, DetectionResult
+from detect_phase import detect_phase, PhaseResult
 
 # Configure logging
 logging.basicConfig(
@@ -73,8 +74,12 @@ class ProjectAnalyzer:
             print("  3. Open an issue at https://github.com/SawanoLab/adaptive-claude-agents/issues")
             return False
 
+        # Step 1.5: Detect development phase
+        print("\n🎯 Detecting development phase...")
+        phase_result = detect_phase(str(self.project_path))
+
         # Step 2: Display results
-        self._display_detection(detection)
+        self._display_detection(detection, phase_result)
 
         # Step 3: Confirm with user (Progressive Disclosure)
         if not self.auto_confirm:
@@ -84,7 +89,7 @@ class ProjectAnalyzer:
 
         # Step 4: Generate subagents
         print("\n📝 Generating subagents...")
-        success = self._generate_subagents(detection)
+        success = self._generate_subagents(detection, phase_result)
 
         if success:
             print("\n✅ Successfully generated subagents!")
@@ -100,7 +105,7 @@ class ProjectAnalyzer:
             print("\n❌ Failed to generate subagents")
             return False
 
-    def _display_detection(self, detection: DetectionResult):
+    def _display_detection(self, detection: DetectionResult, phase_result: PhaseResult):
         """Display detection results to user."""
         print("\n" + "━" * 60)
         print("Detected Tech Stack")
@@ -122,6 +127,13 @@ class ProjectAnalyzer:
             print("\nDetection Reasoning:")
             for indicator in detection.indicators:
                 print(f"  • {indicator}")
+
+        # Show development phase
+        print(f"\n📊 Development Phase")
+        print(f"  Phase:         {phase_result.phase.upper()}")
+        print(f"  Review Rigor:  {phase_result.rigor}/10")
+        print(f"  Description:   {phase_result.description}")
+        print(f"  Confidence:    {phase_result.confidence:.0%}")
 
         print("━" * 60)
 
@@ -159,12 +171,13 @@ class ProjectAnalyzer:
         }
         return descriptions.get(agent_name, "")
 
-    def _generate_subagents(self, detection: DetectionResult) -> bool:
+    def _generate_subagents(self, detection: DetectionResult, phase_result: PhaseResult) -> bool:
         """
         Generate subagent files from templates.
 
         Args:
             detection: Detection results
+            phase_result: Phase detection results
 
         Returns:
             True if successful, False otherwise
@@ -223,7 +236,7 @@ class ProjectAnalyzer:
             return False
 
         # Generate SUBAGENT_GUIDE.md
-        self._generate_usage_guide(detection)
+        self._generate_usage_guide(detection, phase_result)
 
         logger.info(f"Generated {generated_count} subagents")
         return True
@@ -258,12 +271,13 @@ class ProjectAnalyzer:
 
         logger.info(f"Created: {output_file}")
 
-    def _generate_usage_guide(self, detection: DetectionResult):
+    def _generate_usage_guide(self, detection: DetectionResult, phase_result: PhaseResult):
         """
         Generate framework-specific subagent usage guide.
 
         Args:
             detection: Detection results
+            phase_result: Phase detection results
         """
         guide = f"""# Subagent Usage Guide for {detection.framework.upper()} Projects
 
@@ -275,6 +289,17 @@ This guide was auto-generated based on your project:
 - Framework: **{detection.framework}**
 - Confidence: **{detection.confidence * 100:.0f}%**
 - Language: **{detection.language}**
+
+### 📊 Development Phase: **{phase_result.phase.upper()}**
+
+- Review Rigor: **{phase_result.rigor}/10**
+- Description: {phase_result.description}
+- Confidence: {phase_result.confidence:.0%}
+
+**What this means for you:**
+- Prototype (3/10): Light review - "Does it work?" - Encourages rapid iteration
+- MVP (6/10): Moderate review - "Is it secure?" - Balances functionality and quality
+- Production (10/10): Strict review - "Is it perfect?" - Enforces comprehensive standards
 
 ---
 

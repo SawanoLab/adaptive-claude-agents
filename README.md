@@ -5,7 +5,7 @@
 > Auto-generate project-specific Claude Code subagents that adapt to your development phase.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.7.0-beta-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)](#installation)
 [![Status](https://img.shields.io/badge/status-public%20beta-green.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
@@ -17,6 +17,18 @@
 ## What is this?
 
 **Adaptive Claude Agents** automatically generates specialized Claude Code subagents for your project and adjusts code review rigor based on your development phase.
+
+## 👶 Perfect for Beginners
+
+**Vibe Coding Made Easy**:
+
+- ✅ Install in 30 seconds
+- ✅ Templates auto-generated for your project
+- ✅ Quick Start sections (50-100 lines) for immediate value
+- ✅ Expand for advanced patterns when ready
+- ✅ Subagents auto-activate (no manual delegation)
+
+**Learning Curve**: 5 minutes to start, lifetime to master
 
 ### Two Novel Features
 
@@ -38,11 +50,11 @@ Detected: FastAPI + SQLAlchemy + pytest
 
 Automatically adjusts review standards based on development phase:
 
-| Phase | Review Rigor | Focus |
-|-------|--------------|-------|
-| **Prototype** | Light (3/10) | "Does it work?" |
-| **MVP** | Moderate (6/10) | "Is it secure?" |
-| **Production** | Strict (10/10) | "Is it perfect?" |
+| Phase | Review Rigor | Focus | Example Feedback |
+|-------|--------------|-------|------------------|
+| **Prototype** | Light (3/10) | "Does it work?" | "This works! Consider adding error handling later." |
+| **MVP** | Moderate (6/10) | "Is it secure?" | "Add input validation here to prevent SQL injection." |
+| **Production** | Strict (10/10) | "Is it perfect?" | "This needs comprehensive error handling, tests, and monitoring." |
 
 No other AI coding tool (GitHub Copilot, Cursor, etc.) has this.
 
@@ -264,7 +276,13 @@ Review standards automatically adjust:
 | **iOS Swift** | 80% | swift-developer | ✅ |
 | **Flask** | 70% | (FastAPI templates) | ✅ |
 
-**Total**: 11/11 frameworks tested (100%), 15 specialized templates (~260KB)
+**Total**: 11/11 frameworks tested (100%), 15 specialized templates (~864KB with comprehensive troubleshooting)
+
+**Template Structure**:
+
+- Quick Start section (50-100 lines) for beginners to get immediate value
+- Advanced patterns for deep expertise
+- Comprehensive troubleshooting guides
 
 **Legend**: ✅ = Validated in Week 2 testing
 
