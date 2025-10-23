@@ -65,7 +65,7 @@ def create_go_mod(project: Path, module_name: str, dependencies: Dict[str, str])
     return path
 
 
-def create_pubspec_yaml(project: Path, name: str, dependencies: Dict[str, str]) -> Path:
+def create_pubspec_yaml(project: Path, name: str, dependencies: Dict[str, any]) -> Path:
     """Create pubspec.yaml for Flutter projects."""
     pubspec_content = f"""name: {name}
 version: 1.0.0+1
@@ -76,7 +76,13 @@ environment:
 dependencies:
 """
     for pkg, version in dependencies.items():
-        pubspec_content += f"  {pkg}: {version}\n"
+        if isinstance(version, dict):
+            # Handle nested dict like flutter: {sdk: flutter}
+            pubspec_content += f"  {pkg}:\n"
+            for key, val in version.items():
+                pubspec_content += f"    {key}: {val}\n"
+        else:
+            pubspec_content += f"  {pkg}: {version}\n"
 
     path = project / "pubspec.yaml"
     path.write_text(pubspec_content)
