@@ -1,15 +1,17 @@
 # Quick Start Guide (5 Minutes)
 
-Get started with Adaptive Claude Agents in just 5 minutes!
+Get started with Adaptive Claude Agents v1.0.0 in just 5 minutes!
+
+**Perfect for beginners** - Start vibe coding immediately with Quick Start sections in all templates.
 
 ---
 
 ## What You'll Learn
 
-- ✅ How to install Adaptive Claude Agents
-- ✅ How to analyze your first project
-- ✅ How to use auto-generated subagents
-- ✅ How to check your development phase
+- ✅ How to install Adaptive Claude Agents (30 seconds)
+- ✅ How to analyze your first project (1 minute)
+- ✅ How to understand your development phase (automatic)
+- ✅ How to use Quick Start sections in templates (5 minutes)
 
 ---
 
@@ -33,12 +35,13 @@ curl -fsSL https://raw.githubusercontent.com/SawanoLab/adaptive-claude-agents/ma
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Adaptive Claude Agents Installation
-  Version: 0.4.0-beta
+  Version: 1.0.0 (Production Ready)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✓ System check passed
 ✓ Claude Code skills directory found
 ✓ Installation complete!
+✓ Quick Start sections available in all 15 templates
 ```
 
 ### Manual Installation (if needed)
@@ -91,10 +94,26 @@ Testing:       Vitest + Testing Library
 Confidence:    95%
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+🎯 Detecting development phase...
+
+📊 Development Phase
+  Phase:         PROTOTYPE
+  Review Rigor:  3/10
+  Description:   Prototype phase - Focus on "Does it work?" with light review
+  Confidence:    65%
+
 📝 Generating subagents...
-  ✓ Generated: nextjs-tester.md
+  ✓ Generated: nextjs-tester.md (with Quick Start section)
 
 ✅ Successfully generated subagents!
+
+📁 Location: .claude/agents/
+📖 Usage Guide: .claude/agents/SUBAGENT_GUIDE.md
+
+💡 Next steps:
+  1. Open .claude/agents/nextjs-tester.md
+  2. Read the Quick Start section (50-100 lines)
+  3. Start vibe coding with copy-pasteable examples!
 ```
 
 ### Check Generated Files

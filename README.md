@@ -1,13 +1,14 @@
 # Adaptive Claude Agents
 
-> **Status**: Public Beta 🚀
+> **Status**: v1.0.0 - Production Ready 🎉
 >
 > Auto-generate project-specific Claude Code subagents that adapt to your development phase.
+> **Perfect for beginners** - Start vibe coding in 5 minutes!
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)](#installation)
-[![Status](https://img.shields.io/badge/status-public%20beta-green.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
+[![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [日本語版 README](./README.ja.md) | [Documentation](./docs/) | [Examples](./docs/EXAMPLES.md) | [Troubleshooting](./docs/TROUBLESHOOTING.md)
@@ -212,16 +213,18 @@ Tools: Vitest, Testing Library, Tailwind CSS
 ### 2. Phase Detection
 
 ```bash
-$ python3 skills/adaptive-review/detect_phase.py .
+$ python3 skills/project-analyzer/detect_phase.py .
 
 Phase: MVP
 Confidence: 72%
+Review Rigor: 6/10
 
-Indicators:
-  • Version 0.5.0 → MVP
-  • 127 commits → MVP stage
-  • 45 test files → basic testing (56%)
-  • CI/CD: GitHub Actions ✓
+Signals:
+  • Basic tests: 100% ✅
+  • CI config: 100% ✅
+  • Moderate commits (20-100): 100% ✅
+  • Multiple contributors (2-5): 100% ✅
+  • Environment config: 100% ✅
 ```
 
 ### 3. Subagent Generation

@@ -1,13 +1,14 @@
 # Adaptive Claude Agents
 
-> **ステータス**: パブリックベータ 🚀
+> **ステータス**: v1.0.0 - 本番環境対応 🎉
 >
 > プロジェクト固有のClaude Codeサブエージェントを自動生成し、開発フェーズに応じて動作を適応させます。
+> **初心者に最適** - 5分でVibeコーディング開始！
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)](#インストール)
-[![Status](https://img.shields.io/badge/status-public%20beta-green.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
+[![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English README](./README.md) | [ドキュメント](./docs/) | [使用例](./docs/EXAMPLES.ja.md) | [トラブルシューティング](./docs/TROUBLESHOOTING.ja.md)
