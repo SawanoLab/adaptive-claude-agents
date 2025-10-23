@@ -1563,6 +1563,849 @@ SHOW VARIABLES LIKE 'collation%';
 
 ---
 
+## Anti-Patterns
+
+### 1. Using String Concatenation for SQL Queries (SQL Injection)
+
+**Problem**: Vulnerable to SQL injection attacks, data loss, security breach.
+
+```php
+// ❌ DANGEROUS: SQL injection vulnerability!
+$email = $_POST['email'];
+$query = "SELECT * FROM users WHERE email = '$email'";
+$result = $pdo->query($query);
+// Attacker input: ' OR '1'='1' --
+// Executes: SELECT * FROM users WHERE email = '' OR '1'='1' -- '
+// Returns ALL users!
+
+
+// ✅ Good: Use prepared statements with named parameters
+$email = $_POST['email'];
+$stmt = $pdo->prepare('SELECT * FROM users WHERE email = :email');
+$stmt->execute(['email' => $email]);
+$user = $stmt->fetch();
+```
+
+**Why it matters**: SQL injection is the #1 web application vulnerability. Always use prepared statements, never concatenate user input.
+
+---
+
+### 2. Not Using Indexes on Foreign Keys and WHERE Clauses
+
+**Problem**: Slow queries, full table scans, poor performance.
+
+```sql
+-- ❌ Bad: No indexes on foreign keys or WHERE columns
+CREATE TABLE posts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    -- No indexes! Queries will be slow
+) ENGINE=InnoDB;
+
+
+-- ✅ Good: Index all foreign keys and WHERE clause columns
+CREATE TABLE posts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    INDEX idx_user_id (user_id),          -- Index foreign key
+    INDEX idx_status (status),            -- Index WHERE column
+    INDEX idx_created_at (created_at)     -- Index ORDER BY column
+) ENGINE=InnoDB;
+```
+
+**Why it matters**: Missing indexes cause full table scans. On 1M rows, queries can take 5+ seconds instead of 0.02 seconds.
+
+---
+
+### 3. Not Using Transactions for Multi-Step Operations
+
+**Problem**: Data inconsistency, partial writes on error, database corruption.
+
+```php
+// ❌ Bad: No transaction, partial writes on error
+public function transferFunds(int $fromUserId, int $toUserId, float $amount): void
+{
+    // Deduct from sender
+    $stmt = $this->db->prepare('UPDATE accounts SET balance = balance - ? WHERE user_id = ?');
+    $stmt->execute([$amount, $fromUserId]);
+
+    // If error occurs here (e.g., network issue), money is lost!
+    // Sender's balance is deducted but recipient never receives it
+
+    // Add to recipient
+    $stmt = $this->db->prepare('UPDATE accounts SET balance = balance + ? WHERE user_id = ?');
+    $stmt->execute([$amount, $toUserId]);
+}
+
+
+// ✅ Good: Use transaction for atomicity
+public function transferFunds(int $fromUserId, int $toUserId, float $amount): void
+{
+    try {
+        $this->db->beginTransaction();
+
+        // Deduct from sender
+        $stmt = $this->db->prepare('UPDATE accounts SET balance = balance - ? WHERE user_id = ?');
+        $stmt->execute([$amount, $fromUserId]);
+
+        // Add to recipient
+        $stmt = $this->db->prepare('UPDATE accounts SET balance = balance + ? WHERE user_id = ?');
+        $stmt->execute([$amount, $toUserId]);
+
+        $this->db->commit();  // Both succeed or both fail
+
+    } catch (\Exception $e) {
+        $this->db->rollBack();  // Undo all changes
+        throw $e;
+    }
+}
+```
+
+**Why it matters**: Transactions ensure data integrity. Either all operations succeed, or none do. No partial writes.
+
+---
+
+### 4. Using MyISAM Instead of InnoDB
+
+**Problem**: No foreign keys, no transactions, prone to corruption, poor concurrency.
+
+```sql
+-- ❌ Bad: MyISAM (deprecated, no foreign keys)
+CREATE TABLE posts (
+    id INT PRIMARY KEY,
+    user_id INT,
+    title VARCHAR(255)
+) ENGINE=MyISAM;  -- No transactions, no foreign keys!
+
+
+-- ✅ Good: InnoDB (default since MySQL 5.5)
+CREATE TABLE posts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(255) NOT NULL,
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+```
+
+**Why it matters**: InnoDB supports transactions, foreign keys, row-level locking, and crash recovery. MyISAM is obsolete.
+
+---
+
+### 5. Not Handling PDOExceptions
+
+**Problem**: Database errors crash application, no user-friendly error messages.
+
+```php
+// ❌ Bad: No exception handling (crashes on error)
+public function createUser(string $email): int
+{
+    $stmt = $this->db->prepare('INSERT INTO users (email) VALUES (?)');
+    $stmt->execute([$email]);  // Crashes if email duplicate!
+
+    return (int) $this->db->lastInsertId();
+}
+
+
+// ✅ Good: Handle exceptions gracefully
+public function createUser(string $email): int
+{
+    try {
+        $stmt = $this->db->prepare('INSERT INTO users (email) VALUES (?)');
+        $stmt->execute([$email]);
+
+        return (int) $this->db->lastInsertId();
+
+    } catch (PDOException $e) {
+        if ($e->getCode() == '23000') {  // Integrity constraint
+            throw new \RuntimeException("Email {$email} already exists", 409);
+        }
+
+        throw $e;
+    }
+}
+```
+
+**Why it matters**: Proper error handling provides clear messages to users and prevents application crashes.
+
+---
+
+### 6. Using SELECT * Instead of Explicit Columns
+
+**Problem**: Fetches unnecessary data, slower performance, breaks when schema changes.
+
+```php
+// ❌ Bad: SELECT * fetches all columns (wasteful)
+$stmt = $this->db->query('SELECT * FROM users');
+// Fetches: id, email, password, name, bio, avatar, preferences, created_at, updated_at, deleted_at
+// But only need: id, email, name
+
+
+// ✅ Good: SELECT only needed columns (faster)
+$stmt = $this->db->query('SELECT id, email, name FROM users');
+// Fetches only 3 columns (less I/O, less memory)
+```
+
+**Why it matters**: Fetching only needed columns reduces I/O, memory usage, and network traffic. Explicit columns also make code more maintainable.
+
+---
+
+### 7. Not Using utf8mb4 Character Set
+
+**Problem**: Emojis and some Unicode characters don't save correctly, data corruption.
+
+```sql
+-- ❌ Bad: utf8 (only 3 bytes, can't store emojis)
+CREATE TABLE posts (
+    title VARCHAR(255) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+-- User posts "Hello 😀" → Saved as "Hello ???"
+
+
+-- ✅ Good: utf8mb4 (4 bytes, full Unicode support)
+CREATE TABLE posts (
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- User posts "Hello 😀" → Saved correctly!
+```
+
+**Why it matters**: utf8 is limited to 3 bytes per character. utf8mb4 supports 4-byte characters like emojis (😀, 🚀, ❤️) and many Asian characters.
+
+---
+
+## Complete Workflows
+
+### Workflow 1: Complete CRUD API with PDO
+
+**Scenario**: RESTful API endpoints for user management with proper error handling, transactions, and validation.
+
+```php
+<?php
+// src/Repositories/UserRepository.php
+declare(strict_types=1);
+
+class UserRepository
+{
+    public function __construct(
+        private readonly PDO $db
+    ) {}
+
+    /**
+     * Get all users with pagination
+     */
+    public function findAll(int $limit = 50, int $offset = 0): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, name, email, created_at
+             FROM users
+             WHERE deleted_at IS NULL
+             ORDER BY created_at DESC
+             LIMIT :limit OFFSET :offset'
+        );
+
+        $stmt->bindValue('limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue('offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Get user by ID
+     */
+    public function findById(int $id): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, name, email, created_at
+             FROM users
+             WHERE id = :id AND deleted_at IS NULL'
+        );
+
+        $stmt->execute(['id' => $id]);
+        $user = $stmt->fetch();
+
+        return $user ?: null;
+    }
+
+    /**
+     * Create new user
+     */
+    public function create(array $data): int
+    {
+        try {
+            $stmt = $this->db->prepare(
+                'INSERT INTO users (name, email, password, created_at, updated_at)
+                 VALUES (:name, :email, :password, NOW(), NOW())'
+            );
+
+            $stmt->execute([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => password_hash($data['password'], PASSWORD_ARGON2ID),
+            ]);
+
+            return (int) $this->db->lastInsertId();
+
+        } catch (PDOException $e) {
+            if ($e->getCode() == '23000' && strpos($e->getMessage(), 'Duplicate entry') !== false) {
+                throw new \RuntimeException("Email {$data['email']} already exists", 409);
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Update user
+     */
+    public function update(int $id, array $data): bool
+    {
+        $fields = [];
+        $params = ['id' => $id];
+
+        $allowedFields = ['name', 'email', 'password'];
+        foreach ($data as $key => $value) {
+            if (in_array($key, $allowedFields)) {
+                if ($key === 'password') {
+                    $fields[] = "password = :password";
+                    $params['password'] = password_hash($value, PASSWORD_ARGON2ID);
+                } else {
+                    $fields[] = "$key = :$key";
+                    $params[$key] = $value;
+                }
+            }
+        }
+
+        if (empty($fields)) {
+            return false;
+        }
+
+        $sql = 'UPDATE users SET ' . implode(', ', $fields) . ', updated_at = NOW() WHERE id = :id';
+        $stmt = $this->db->prepare($sql);
+
+        return $stmt->execute($params);
+    }
+
+    /**
+     * Soft delete user
+     */
+    public function delete(int $id): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE users SET deleted_at = NOW() WHERE id = :id'
+        );
+
+        return $stmt->execute(['id' => $id]);
+    }
+}
+
+
+// src/Controllers/UserController.php
+class UserController
+{
+    public function __construct(
+        private readonly UserRepository $userRepo
+    ) {}
+
+    /**
+     * GET /api/users
+     */
+    public function index(): void
+    {
+        $page = (int) ($_GET['page'] ?? 1);
+        $perPage = 20;
+        $offset = ($page - 1) * $perPage;
+
+        $users = $this->userRepo->findAll($perPage, $offset);
+
+        header('Content-Type: application/json');
+        echo json_encode(['data' => $users]);
+    }
+
+    /**
+     * GET /api/users/:id
+     */
+    public function show(int $id): void
+    {
+        $user = $this->userRepo->findById($id);
+
+        if (!$user) {
+            http_response_code(404);
+            echo json_encode(['error' => 'User not found']);
+            return;
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode($user);
+    }
+
+    /**
+     * POST /api/users
+     */
+    public function store(): void
+    {
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        // Validation
+        if (empty($data['name']) || empty($data['email']) || empty($data['password'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Name, email, and password are required']);
+            return;
+        }
+
+        try {
+            $userId = $this->userRepo->create($data);
+
+            http_response_code(201);
+            header('Content-Type: application/json');
+            echo json_encode(['id' => $userId, 'message' => 'User created successfully']);
+
+        } catch (\RuntimeException $e) {
+            http_response_code($e->getCode() ?: 500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * PUT /api/users/:id
+     */
+    public function update(int $id): void
+    {
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        $updated = $this->userRepo->update($id, $data);
+
+        if (!$updated) {
+            http_response_code(404);
+            echo json_encode(['error' => 'User not found or no changes made']);
+            return;
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode(['message' => 'User updated successfully']);
+    }
+
+    /**
+     * DELETE /api/users/:id
+     */
+    public function destroy(int $id): void
+    {
+        $deleted = $this->userRepo->delete($id);
+
+        if (!$deleted) {
+            http_response_code(404);
+            echo json_encode(['error' => 'User not found']);
+            return;
+        }
+
+        http_response_code(204);  // No content
+    }
+}
+```
+
+**Key Features**:
+- ✅ Complete CRUD operations (Create, Read, Update, Delete)
+- ✅ Prepared statements for SQL injection prevention
+- ✅ Error handling with user-friendly messages
+- ✅ Pagination support
+- ✅ Soft delete (deleted_at column)
+- ✅ Password hashing with Argon2id
+
+---
+
+### Workflow 2: Database Migration System
+
+**Scenario**: Version-controlled database schema changes with up/down migrations.
+
+```php
+<?php
+// migrations/Migration_20250123_CreateUsersTable.php
+declare(strict_types=1);
+
+class Migration_20250123_CreateUsersTable
+{
+    public function __construct(
+        private readonly PDO $db
+    ) {}
+
+    public function up(): void
+    {
+        $sql = "
+            CREATE TABLE users (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                deleted_at TIMESTAMP NULL,
+
+                INDEX idx_email (email),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ";
+
+        $this->db->exec($sql);
+    }
+
+    public function down(): void
+    {
+        $this->db->exec('DROP TABLE IF EXISTS users');
+    }
+}
+
+
+// migrations/MigrationRunner.php
+class MigrationRunner
+{
+    public function __construct(
+        private readonly PDO $db
+    ) {
+        $this->ensureMigrationsTable();
+    }
+
+    private function ensureMigrationsTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS migrations (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                migration VARCHAR(255) NOT NULL UNIQUE,
+                executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB
+        ";
+
+        $this->db->exec($sql);
+    }
+
+    private function getExecutedMigrations(): array
+    {
+        $stmt = $this->db->query('SELECT migration FROM migrations ORDER BY id');
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    public function migrate(): void
+    {
+        $executed = $this->getExecutedMigrations();
+        $migrations = $this->getMigrationFiles();
+
+        foreach ($migrations as $migrationFile) {
+            $migrationName = basename($migrationFile, '.php');
+
+            if (in_array($migrationName, $executed)) {
+                echo "Skipping: $migrationName (already executed)\n";
+                continue;
+            }
+
+            echo "Running: $migrationName\n";
+
+            require_once $migrationFile;
+            $migration = new $migrationName($this->db);
+
+            try {
+                $this->db->beginTransaction();
+                $migration->up();
+
+                $stmt = $this->db->prepare('INSERT INTO migrations (migration) VALUES (?)');
+                $stmt->execute([$migrationName]);
+
+                $this->db->commit();
+
+                echo "Completed: $migrationName\n";
+            } catch (\Exception $e) {
+                $this->db->rollBack();
+                echo "Failed: $migrationName - " . $e->getMessage() . "\n";
+                break;
+            }
+        }
+    }
+
+    public function rollback(): void
+    {
+        $stmt = $this->db->query('SELECT migration FROM migrations ORDER BY id DESC LIMIT 1');
+        $lastMigration = $stmt->fetchColumn();
+
+        if (!$lastMigration) {
+            echo "No migrations to rollback\n";
+            return;
+        }
+
+        $migrationFile = __DIR__ . "/$lastMigration.php";
+
+        if (!file_exists($migrationFile)) {
+            echo "Migration file not found: $lastMigration\n";
+            return;
+        }
+
+        echo "Rolling back: $lastMigration\n";
+
+        require_once $migrationFile;
+        $migration = new $lastMigration($this->db);
+
+        try {
+            $this->db->beginTransaction();
+            $migration->down();
+
+            $stmt = $this->db->prepare('DELETE FROM migrations WHERE migration = ?');
+            $stmt->execute([$lastMigration]);
+
+            $this->db->commit();
+
+            echo "Rolled back: $lastMigration\n";
+        } catch (\Exception $e) {
+            $this->db->rollBack();
+            echo "Rollback failed: " . $e->getMessage() . "\n";
+        }
+    }
+
+    private function getMigrationFiles(): array
+    {
+        $files = glob(__DIR__ . '/Migration_*.php');
+        sort($files);
+        return $files;
+    }
+}
+
+
+// migrations/migrate.php (CLI script)
+require __DIR__ . '/../vendor/autoload.php';
+
+$db = Database::getInstance();
+$runner = new MigrationRunner($db);
+
+$command = $argv[1] ?? 'migrate';
+
+match ($command) {
+    'migrate' => $runner->migrate(),
+    'rollback' => $runner->rollback(),
+    default => echo "Usage: php migrate.php [migrate|rollback]\n"
+};
+```
+
+**Key Features**:
+- ✅ Version-controlled schema changes
+- ✅ Up/down migrations for rollback
+- ✅ Tracks executed migrations in database
+- ✅ Transaction support (atomic migrations)
+- ✅ Timestamped migration files
+
+---
+
+## 2025-Specific Patterns
+
+### 1. PHP 8.1+ Readonly Properties (Database Models)
+
+**Feature**: Immutable properties for database models (PHP 8.1+, 2021).
+
+```php
+// ✅ PHP 8.1+ readonly properties (immutable after construction)
+class User
+{
+    public function __construct(
+        public readonly int $id,
+        public readonly string $email,
+        public readonly string $name,
+        public readonly \DateTimeImmutable $createdAt,
+    ) {}
+}
+
+// Usage
+$user = new User(1, 'user@example.com', 'John', new \DateTimeImmutable());
+// $user->id = 2;  // Error: Cannot modify readonly property
+```
+
+**Benefits**: Prevents accidental modification of database-fetched data. Ensures data integrity.
+
+---
+
+### 2. MySQL 8.0+ Window Functions
+
+**Feature**: Advanced analytics with window functions (MySQL 8.0+, 2018).
+
+```sql
+-- ✅ Row number within partition (ranking users by posts per month)
+SELECT
+    user_id,
+    DATE_FORMAT(created_at, '%Y-%m') AS month,
+    COUNT(*) AS posts_count,
+    ROW_NUMBER() OVER (
+        PARTITION BY DATE_FORMAT(created_at, '%Y-%m')
+        ORDER BY COUNT(*) DESC
+    ) AS rank
+FROM posts
+GROUP BY user_id, month;
+
+
+-- ✅ Running total (cumulative post count per user)
+SELECT
+    user_id,
+    created_at,
+    title,
+    SUM(1) OVER (
+        PARTITION BY user_id
+        ORDER BY created_at
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS cumulative_posts
+FROM posts;
+
+
+-- ✅ Moving average (last 7 days average views)
+SELECT
+    created_at,
+    views,
+    AVG(views) OVER (
+        ORDER BY created_at
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) AS moving_avg_views
+FROM posts;
+```
+
+**Benefits**: Complex analytics without self-joins or subqueries. Cleaner, faster queries.
+
+---
+
+### 3. MySQL 8.0+ Common Table Expressions (CTEs)
+
+**Feature**: WITH clause for readable complex queries (MySQL 8.0+, 2018).
+
+```sql
+-- ✅ CTE for hierarchical data (organization chart)
+WITH RECURSIVE employee_hierarchy AS (
+    -- Base case: Top-level managers
+    SELECT id, name, manager_id, 1 AS level
+    FROM employees
+    WHERE manager_id IS NULL
+
+    UNION ALL
+
+    -- Recursive case: Direct reports
+    SELECT e.id, e.name, e.manager_id, eh.level + 1
+    FROM employees e
+    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.id
+)
+SELECT * FROM employee_hierarchy ORDER BY level, name;
+
+
+-- ✅ CTE for complex filtering (users with >10 posts in last month)
+WITH active_users AS (
+    SELECT user_id, COUNT(*) AS post_count
+    FROM posts
+    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)
+    GROUP BY user_id
+    HAVING post_count > 10
+)
+SELECT u.*, au.post_count
+FROM users u
+INNER JOIN active_users au ON u.id = au.user_id;
+```
+
+**Benefits**: More readable than nested subqueries. Supports recursion for hierarchical data.
+
+---
+
+### 4. MySQL 8.0+ JSON Functions
+
+**Feature**: Native JSON storage and querying (MySQL 5.7+, enhanced in 8.0).
+
+```sql
+-- ✅ Store JSON data
+CREATE TABLE user_preferences (
+    user_id BIGINT UNSIGNED PRIMARY KEY,
+    settings JSON NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+INSERT INTO user_preferences (user_id, settings) VALUES
+(1, '{"theme": "dark", "notifications": {"email": true, "push": false}}');
+
+
+-- ✅ Query JSON fields
+SELECT user_id,
+       JSON_EXTRACT(settings, '$.theme') AS theme,
+       JSON_EXTRACT(settings, '$.notifications.email') AS email_notifications
+FROM user_preferences
+WHERE JSON_EXTRACT(settings, '$.theme') = 'dark';
+
+
+-- ✅ Update JSON fields
+UPDATE user_preferences
+SET settings = JSON_SET(settings, '$.theme', 'light')
+WHERE user_id = 1;
+
+
+-- ✅ PHP usage
+$stmt = $pdo->prepare('SELECT settings FROM user_preferences WHERE user_id = ?');
+$stmt->execute([1]);
+$settings = $stmt->fetchColumn();
+
+$settingsArray = json_decode($settings, true);
+echo $settingsArray['theme'];  // 'light'
+```
+
+**Benefits**: Flexible schema for user preferences, settings, metadata. No need for EAV pattern.
+
+---
+
+### 5. PDO Persistent Connections (Connection Pooling)
+
+**Feature**: Reuse connections across requests (PHP 5.3+, best practice in 2025).
+
+```php
+// ✅ Persistent connection (reuses existing connection)
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES => false,
+    PDO::ATTR_PERSISTENT => true,  // Enable persistent connections
+];
+
+$pdo = new PDO($dsn, $user, $pass, $options);
+
+
+// ❌ Non-persistent (creates new connection each time, slower)
+$pdo = new PDO($dsn, $user, $pass);
+```
+
+**Benefits**: Reduces connection overhead (0.1-0.5s saved per request). Essential for high-traffic sites.
+
+**Caution**: Use with care. Max connections = max PHP workers. Monitor `SHOW PROCESSLIST` for connection leaks.
+
+---
+
+### 6. MySQL 8.0+ Descending Indexes
+
+**Feature**: Optimize ORDER BY DESC with descending indexes (MySQL 8.0+, 2018).
+
+```sql
+-- ✅ Descending index for ORDER BY DESC queries
+CREATE INDEX idx_created_desc ON posts(created_at DESC);
+
+-- Now fast:
+SELECT * FROM posts ORDER BY created_at DESC LIMIT 10;
+
+
+-- ✅ Mixed ascending/descending index
+CREATE INDEX idx_user_created ON posts(user_id ASC, created_at DESC);
+
+-- Optimizes:
+SELECT * FROM posts
+WHERE user_id = 123
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+**Benefits**: Faster sorting for DESC queries. No need for filesort operation.
+
+---
+
 ## References
 
 - [MySQL Documentation](https://dev.mysql.com/doc/)
