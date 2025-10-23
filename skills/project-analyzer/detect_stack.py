@@ -28,127 +28,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class DirectoryScanner:
-    """
-    Cached directory scanner to reduce redundant file system operations.
-
-    Performs a single directory scan at initialization and caches results
-    for fast lookups by filename and extension.
-
-    This optimization reduces scandir calls from 400+ to 1, significantly
-    improving detection performance (40-50% speedup expected).
-    """
-
-    def __init__(self, project_path: Path):
-        """
-        Initialize scanner and perform initial directory scan.
-
-        Args:
-            project_path: Path to project root directory
-        """
-        self.project_path = project_path
-        self._file_cache: Dict[str, List[Path]] = {}
-        self._dir_cache: Set[Path] = set()
-        self._scanned = False
-
-    def scan_once(self):
-        """
-        Perform single directory scan and cache results.
-
-        Caches files by both extension and full name for fast lookups.
-        Also caches directory names for quick directory checks.
-        """
-        if self._scanned:
-            return
-
-        try:
-            entries = list(self.project_path.iterdir())
-        except (PermissionError, OSError) as e:
-            logger.warning(f"Permission denied scanning {self.project_path}: {e}")
-            self._scanned = True
-            return
-
-        for entry in entries:
-            if entry.is_file():
-                # Cache by extension (e.g., ".json", ".py")
-                ext = entry.suffix.lower()
-                if ext not in self._file_cache:
-                    self._file_cache[ext] = []
-                self._file_cache[ext].append(entry)
-
-                # Cache by full name (e.g., "package.json", "go.mod")
-                name = entry.name.lower()
-                if name not in self._file_cache:
-                    self._file_cache[name] = []
-                self._file_cache[name].append(entry)
-
-            elif entry.is_dir():
-                self._dir_cache.add(entry)
-
-        self._scanned = True
-        logger.debug(f"Scanned directory: {len(self._file_cache)} file types, {len(self._dir_cache)} directories")
-
-    def has_file(self, filename: str) -> bool:
-        """
-        Check if file exists (cached).
-
-        Args:
-            filename: File name to check (case-insensitive)
-
-        Returns:
-            True if file exists, False otherwise
-        """
-        if not self._scanned:
-            self.scan_once()
-        return filename.lower() in self._file_cache
-
-    def has_dir(self, dirname: str) -> bool:
-        """
-        Check if directory exists (cached).
-
-        Args:
-            dirname: Directory name to check
-
-        Returns:
-            True if directory exists, False otherwise
-        """
-        if not self._scanned:
-            self.scan_once()
-        dir_path = self.project_path / dirname
-        return dir_path in self._dir_cache
-
-    def get_file(self, filename: str) -> Optional[Path]:
-        """
-        Get specific file path (cached).
-
-        Args:
-            filename: File name to retrieve
-
-        Returns:
-            Path to file if exists, None otherwise
-        """
-        if not self._scanned:
-            self.scan_once()
-        files = self._file_cache.get(filename.lower(), [])
-        return files[0] if files else None
-
-    def get_files_by_extension(self, ext: str) -> List[Path]:
-        """
-        Get all files with extension (cached).
-
-        Args:
-            ext: File extension (e.g., ".py", ".js")
-
-        Returns:
-            List of paths with matching extension
-        """
-        if not self._scanned:
-            self.scan_once()
-        if not ext.startswith('.'):
-            ext = '.' + ext
-        return self._file_cache.get(ext.lower(), [])
-
-
 @dataclass
 class DetectionResult:
     """
@@ -192,7 +71,7 @@ class TechStackDetector:
 
     def __init__(self, project_path: Path):
         """
-        Initialize detector with directory scanner.
+        Initialize detector.
 
         Args:
             project_path: Path to project root directory
@@ -201,15 +80,11 @@ class TechStackDetector:
         if not self.project_path.exists():
             raise FileNotFoundError(f"Project path not found: {project_path}")
 
-        # Initialize directory scanner for cached file lookups
-        self.scanner = DirectoryScanner(self.project_path)
-        self.scanner.scan_once()
-
         logger.info(f"Initialized detector for: {self.project_path}")
 
     def detect(self) -> Optional[DetectionResult]:
         """
-        Detect tech stack with early exit optimization.
+        Detect tech stack.
 
         Returns:
             DetectionResult if successful, None if detection failed
@@ -217,39 +92,23 @@ class TechStackDetector:
         logger.info("Starting tech stack detection")
 
         # Try detection in order of specificity
-        # OPTIMIZATION: Early exit if confidence >= 0.8 (high confidence match)
-        detectors = [
-            self._detect_nextjs,
-            self._detect_react,
-            self._detect_vue,
-            self._detect_fastapi,
-            self._detect_django,
-            self._detect_flask,
-            self._detect_vanilla_php_web,
-            self._detect_python_ml,
-            self._detect_ios_swift,
-            self._detect_go,
-            self._detect_flutter,
-        ]
+        result = (
+            self._detect_nextjs() or
+            self._detect_react() or
+            self._detect_vue() or
+            self._detect_fastapi() or
+            self._detect_django() or
+            self._detect_flask() or
+            self._detect_vanilla_php_web() or
+            self._detect_python_ml() or
+            self._detect_ios_swift() or
+            self._detect_go() or
+            self._detect_flutter()
+        )
 
-        best_result = None
-        for detector in detectors:
-            result = detector()
-            if result:
-                if result.confidence >= 0.8:
-                    # High confidence match - stop checking (early exit optimization)
-                    logger.info(f"✓ Early exit: {result.framework} (confidence: {result.confidence:.2f})")
-                    return result
-                elif result.confidence > 0.5:
-                    # Medium confidence - keep as best result but continue checking
-                    if not best_result or result.confidence > best_result.confidence:
-                        best_result = result
-                        logger.debug(f"Partial match: {result.framework} (confidence: {result.confidence:.2f})")
-
-        # Return best result if found (backward compatibility)
-        if best_result:
-            logger.info(f"Detected: {best_result.framework} (confidence: {best_result.confidence:.2f})")
-            return best_result
+        if result and result.confidence > 0.5:
+            logger.info(f"Detected: {result.framework} (confidence: {result.confidence:.2f})")
+            return result
 
         logger.warning("Could not confidently detect tech stack")
         return None
@@ -259,11 +118,11 @@ class TechStackDetector:
         indicators = []
         confidence = 0.0
 
-        # Check for package.json (cached)
-        if not self.scanner.has_file("package.json"):
+        # Check for package.json
+        package_json = self.project_path / "package.json"
+        if not package_json.exists():
             return None
 
-        package_json = self.scanner.get_file("package.json")
         indicators.append("package.json exists: +0.1")
         confidence += 0.1
 
@@ -284,16 +143,16 @@ class TechStackDetector:
         else:
             return None
 
-        # Check for next.config.js/ts (cached)
-        if self.scanner.has_file("next.config.js") or \
-           self.scanner.has_file("next.config.ts") or \
-           self.scanner.has_file("next.config.mjs"):
+        # Check for next.config.js/ts
+        if (self.project_path / "next.config.js").exists() or \
+           (self.project_path / "next.config.ts").exists() or \
+           (self.project_path / "next.config.mjs").exists():
             indicators.append("next.config.* exists: +0.3")
             confidence += 0.3
 
-        # Check for app/ or pages/ directory (cached)
-        has_app_dir = self.scanner.has_dir("app")
-        has_pages_dir = self.scanner.has_dir("pages")
+        # Check for app/ or pages/ directory
+        has_app_dir = (self.project_path / "app").is_dir()
+        has_pages_dir = (self.project_path / "pages").is_dir()
 
         if has_app_dir:
             indicators.append("app/ directory (App Router): +0.2")
@@ -302,9 +161,9 @@ class TechStackDetector:
             indicators.append("pages/ directory (Pages Router): +0.2")
             confidence += 0.2
 
-        # Detect TypeScript (cached)
+        # Detect TypeScript
         language = "javascript"
-        if self.scanner.has_file("tsconfig.json"):
+        if (self.project_path / "tsconfig.json").exists():
             language = "typescript"
             indicators.append("TypeScript detected")
 
@@ -377,11 +236,10 @@ class TechStackDetector:
 
     def _detect_react(self) -> Optional[DetectionResult]:
         """Detect standalone React projects (non-Next.js)."""
-        # Check for package.json (cached)
-        if not self.scanner.has_file("package.json"):
+        package_json = self.project_path / "package.json"
+        if not package_json.exists():
             return None
 
-        package_json = self.scanner.get_file("package.json")
         try:
             with open(package_json, 'r', encoding='utf-8') as f:
                 pkg_data = json.load(f)
@@ -408,7 +266,7 @@ class TechStackDetector:
             confidence += 0.2
             indicators.append("Create React App: +0.2")
 
-        language = "typescript" if self.scanner.has_file("tsconfig.json") else "javascript"
+        language = "typescript" if (self.project_path / "tsconfig.json").exists() else "javascript"
 
         return DetectionResult(
             framework=framework,
@@ -422,11 +280,10 @@ class TechStackDetector:
 
     def _detect_vue(self) -> Optional[DetectionResult]:
         """Detect Vue.js projects."""
-        # Check for package.json (cached)
-        if not self.scanner.has_file("package.json"):
+        package_json = self.project_path / "package.json"
+        if not package_json.exists():
             return None
 
-        package_json = self.scanner.get_file("package.json")
         try:
             with open(package_json, 'r', encoding='utf-8') as f:
                 pkg_data = json.load(f)
@@ -468,11 +325,11 @@ class TechStackDetector:
         Returns:
             DetectionResult if FastAPI detected, None otherwise
         """
-        # Check for Python project files (cached)
+        # Check for Python project files
         if not any([
-            self.scanner.has_file("requirements.txt"),
-            self.scanner.has_file("pyproject.toml"),
-            self.scanner.has_file("setup.py")
+            (self.project_path / "requirements.txt").exists(),
+            (self.project_path / "pyproject.toml").exists(),
+            (self.project_path / "setup.py").exists()
         ]):
             return None
 
@@ -481,9 +338,9 @@ class TechStackDetector:
         version = None
         tools = {}
 
-        # Check requirements.txt (cached)
-        if self.scanner.has_file("requirements.txt"):
-            requirements_file = self.scanner.get_file("requirements.txt")
+        # Check requirements.txt
+        requirements_file = self.project_path / "requirements.txt"
+        if requirements_file.exists():
             try:
                 with open(requirements_file, 'r', encoding='utf-8') as f:
                     requirements = f.read()
@@ -645,8 +502,8 @@ class TechStackDetector:
 
     def _detect_django(self) -> Optional[DetectionResult]:
         """Detect Django projects."""
-        # Check for manage.py (Django's signature file) (cached)
-        if not self.scanner.has_file("manage.py"):
+        # Check for manage.py (Django's signature file)
+        if not (self.project_path / "manage.py").exists():
             return None
 
         confidence = 0.8
@@ -664,11 +521,10 @@ class TechStackDetector:
 
     def _detect_flask(self) -> Optional[DetectionResult]:
         """Detect Flask projects."""
-        # Check for requirements.txt (cached)
-        if not self.scanner.has_file("requirements.txt"):
+        requirements_file = self.project_path / "requirements.txt"
+        if not requirements_file.exists():
             return None
 
-        requirements_file = self.scanner.get_file("requirements.txt")
         try:
             with open(requirements_file, 'r', encoding='utf-8') as f:
                 requirements = f.read().lower()
@@ -701,11 +557,10 @@ class TechStackDetector:
         Returns:
             DetectionResult if Go project detected, None otherwise
         """
-        # Check for go.mod (cached)
-        if not self.scanner.has_file("go.mod"):
+        go_mod = self.project_path / "go.mod"
+        if not go_mod.exists():
             return None
 
-        go_mod = self.scanner.get_file("go.mod")
         confidence = 0.7
         indicators = ["go.mod exists: +0.7"]
         tools = {}
@@ -897,11 +752,10 @@ class TechStackDetector:
         Returns:
             DetectionResult if Flutter project detected, None otherwise
         """
-        # Check for pubspec.yaml (cached)
-        if not self.scanner.has_file("pubspec.yaml"):
+        pubspec = self.project_path / "pubspec.yaml"
+        if not pubspec.exists():
             return None
 
-        pubspec = self.scanner.get_file("pubspec.yaml")
         confidence = 0.0
         indicators = []
         tools = {}
@@ -994,11 +848,11 @@ class TechStackDetector:
             except UnicodeDecodeError:
                 return None
 
-        # Check for Flutter project structure (cached)
-        has_lib = self.scanner.has_dir('lib')
-        has_android = self.scanner.has_dir('android')
-        has_ios = self.scanner.has_dir('ios')
-        has_test = self.scanner.has_dir('test')
+        # Check for Flutter project structure
+        has_lib = (self.project_path / 'lib').is_dir()
+        has_android = (self.project_path / 'android').is_dir()
+        has_ios = (self.project_path / 'ios').is_dir()
+        has_test = (self.project_path / 'test').is_dir()
 
         if has_lib:
             confidence += 0.15
@@ -1010,7 +864,7 @@ class TechStackDetector:
             confidence += 0.05
             indicators.append("platform directory exists: +0.05")
 
-        # Check for main.dart (cached via subdirectory)
+        # Check for main.dart
         main_dart = self.project_path / 'lib' / 'main.dart'
         if main_dart.exists():
             confidence += 0.1
@@ -1118,8 +972,9 @@ class TechStackDetector:
         version = None
         language = "php"
         
-        # Check for composer.json (cached)
-        if not self.scanner.has_file("composer.json"):
+        # Check for composer.json
+        composer_file = self.project_path / "composer.json"
+        if not composer_file.exists():
             # No composer - check for raw PHP files
             root_php_files = list(self.project_path.glob("*.php"))
             if len(root_php_files) >= 3:
@@ -1129,10 +984,9 @@ class TechStackDetector:
             else:
                 return None
         else:
-            composer_file = self.scanner.get_file("composer.json")
             indicators.append("composer.json exists: +0.1")
             confidence += 0.1
-
+            
             try:
                 composer_data = json.load(open(composer_file))
                 requires = composer_data.get('require', {})
@@ -1394,11 +1248,11 @@ class TechStackDetector:
         Returns:
             DetectionResult if Python ML project detected, None otherwise
         """
-        # Check for Python project files (cached)
-        has_requirements = self.scanner.has_file("requirements.txt")
-        has_pyproject = self.scanner.has_file("pyproject.toml")
-        has_conda_env = self.scanner.has_file("environment.yml")
-
+        # Check for Python project files
+        has_requirements = (self.project_path / "requirements.txt").exists()
+        has_pyproject = (self.project_path / "pyproject.toml").exists()
+        has_conda_env = (self.project_path / "environment.yml").exists()
+        
         if not (has_requirements or has_pyproject or has_conda_env):
             return None
 
@@ -1406,7 +1260,7 @@ class TechStackDetector:
         indicators = []
         tools = {}
         ml_type = None  # 'general-ml', 'deep-learning', 'computer-vision', 'nlp'
-
+        
         # ML/DS library keywords with categories
         ml_libraries = {
             'general': ['numpy', 'pandas', 'scikit-learn', 'sklearn', 'scipy', 'matplotlib', 'seaborn'],
@@ -1415,27 +1269,27 @@ class TechStackDetector:
             'nlp': ['nltk', 'spacy', 'transformers', 'huggingface', 'gensim', 'wordcloud'],
             'tools': ['jupyter', 'notebook', 'jupyterlab', 'mlflow', 'wandb', 'tensorboard']
         }
-
+        
         detected_categories = {cat: [] for cat in ml_libraries.keys()}
-
-        # Check requirements.txt (cached)
-        if has_requirements:
-            requirements_file = self.scanner.get_file("requirements.txt")
+        
+        # Check requirements.txt
+        requirements_file = self.project_path / "requirements.txt"
+        if requirements_file.exists():
             try:
                 with open(requirements_file, 'r', encoding='utf-8') as f:
                     requirements = f.read().lower()
-
+                    
                     for category, libs in ml_libraries.items():
                         for lib in libs:
                             if lib in requirements:
                                 detected_categories[category].append(lib)
-
+                                
             except UnicodeDecodeError:
                 pass
-
-        # Check environment.yml (cached)
-        if has_conda_env:
-            env_file = self.scanner.get_file("environment.yml")
+        
+        # Check environment.yml
+        env_file = self.project_path / "environment.yml"
+        if env_file.exists():
             try:
                 with open(env_file, 'r', encoding='utf-8') as f:
                     env_content = f.read().lower()
@@ -1658,14 +1512,14 @@ class TechStackDetector:
             tools['ui-framework'] = ['uikit']
             indicators.append(f"UIKit detected in {uikit_count} files")
         
-        # Check for CocoaPods (cached)
-        if self.scanner.has_file("Podfile"):
+        # Check for CocoaPods
+        if (self.project_path / "Podfile").exists():
             tools['dependency-manager'] = ['cocoapods']
             confidence += 0.05
             indicators.append("CocoaPods (Podfile): +0.05")
-
-        # Check for Swift Package Manager (cached)
-        if self.scanner.has_file("Package.swift"):
+        
+        # Check for Swift Package Manager
+        if (self.project_path / "Package.swift").exists():
             tools.setdefault('dependency-manager', []).append('spm')
             confidence += 0.05
             indicators.append("Swift Package Manager: +0.05")
