@@ -42,6 +42,7 @@ class DetectionResult:
         tools: Dict of detected tools (testing, styling, state, etc.)
         recommended_subagents: List of recommended subagent names
         project_structure: Dict describing project layout
+        used_files: List of files actually used during detection (for smart cache invalidation)
     """
     framework: str
     version: Optional[str] = None
@@ -51,6 +52,7 @@ class DetectionResult:
     tools: Dict[str, List[str]] = field(default_factory=dict)
     recommended_subagents: List[str] = field(default_factory=list)
     project_structure: Dict[str, bool] = field(default_factory=dict)
+    used_files: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -80,6 +82,8 @@ class TechStackDetector:
         if not self.project_path.exists():
             raise FileNotFoundError(f"Project path not found: {project_path}")
 
+        self.used_files = []  # Track files used during detection
+
         logger.info(f"Initialized detector for: {self.project_path}")
 
     def detect(self) -> Optional[DetectionResult]:
@@ -107,31 +111,81 @@ class TechStackDetector:
         )
 
         if result and result.confidence > 0.5:
+            # Add tracked files to result
+            result.used_files = self.used_files
             logger.info(f"Detected: {result.framework} (confidence: {result.confidence:.2f})")
+            logger.debug(f"Used files: {len(self.used_files)} files tracked")
             return result
 
         logger.warning("Could not confidently detect tech stack")
         return None
+
+    def _read_file(self, relative_path: str) -> Optional[str]:
+        """
+        Read file and track usage for smart cache invalidation.
+
+        Args:
+            relative_path: Path relative to project root
+
+        Returns:
+            File content as string, or None if file doesn't exist
+        """
+        file_path = self.project_path / relative_path
+        if file_path.exists() and file_path.is_file():
+            self.used_files.append(relative_path)
+            return file_path.read_text(encoding='utf-8', errors='ignore')
+        return None
+
+    def _check_file(self, relative_path: str) -> bool:
+        """
+        Check if file exists and track usage.
+
+        Args:
+            relative_path: Path relative to project root
+
+        Returns:
+            True if file exists, False otherwise
+        """
+        file_path = self.project_path / relative_path
+        exists = file_path.exists() and file_path.is_file()
+        if exists:
+            self.used_files.append(relative_path)
+        return exists
+
+    def _check_dir(self, relative_path: str) -> bool:
+        """
+        Check if directory exists and track usage.
+
+        Args:
+            relative_path: Path relative to project root
+
+        Returns:
+            True if directory exists, False otherwise
+        """
+        dir_path = self.project_path / relative_path
+        exists = dir_path.exists() and dir_path.is_dir()
+        if exists:
+            self.used_files.append(relative_path + "/")
+        return exists
 
     def _detect_nextjs(self) -> Optional[DetectionResult]:
         """Detect Next.js projects."""
         indicators = []
         confidence = 0.0
 
-        # Check for package.json
-        package_json = self.project_path / "package.json"
-        if not package_json.exists():
+        # Check for package.json (with tracking)
+        package_json_content = self._read_file("package.json")
+        if not package_json_content:
             return None
 
         indicators.append("package.json exists: +0.1")
         confidence += 0.1
 
-        # Read package.json
+        # Parse package.json
         try:
-            with open(package_json, 'r', encoding='utf-8') as f:
-                pkg_data = json.load(f)
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.error(f"Failed to read package.json: {e}")
+            pkg_data = json.loads(package_json_content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse package.json: {e}")
             return None
 
         # Check for next dependency
@@ -143,16 +197,16 @@ class TechStackDetector:
         else:
             return None
 
-        # Check for next.config.js/ts
-        if (self.project_path / "next.config.js").exists() or \
-           (self.project_path / "next.config.ts").exists() or \
-           (self.project_path / "next.config.mjs").exists():
+        # Check for next.config.* (with tracking)
+        if self._check_file("next.config.js") or \
+           self._check_file("next.config.ts") or \
+           self._check_file("next.config.mjs"):
             indicators.append("next.config.* exists: +0.3")
             confidence += 0.3
 
-        # Check for app/ or pages/ directory
-        has_app_dir = (self.project_path / "app").is_dir()
-        has_pages_dir = (self.project_path / "pages").is_dir()
+        # Check for app/ or pages/ directory (with tracking)
+        has_app_dir = self._check_dir("app")
+        has_pages_dir = self._check_dir("pages")
 
         if has_app_dir:
             indicators.append("app/ directory (App Router): +0.2")
@@ -161,9 +215,9 @@ class TechStackDetector:
             indicators.append("pages/ directory (Pages Router): +0.2")
             confidence += 0.2
 
-        # Detect TypeScript
+        # Detect TypeScript (with tracking)
         language = "javascript"
-        if (self.project_path / "tsconfig.json").exists():
+        if self._check_file("tsconfig.json"):
             language = "typescript"
             indicators.append("TypeScript detected")
 

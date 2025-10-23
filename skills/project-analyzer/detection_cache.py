@@ -72,7 +72,7 @@ class DetectionCache:
 
         logger.debug(f"Initialized cache at: {self.cache_dir}")
 
-    def generate_key(self, project_path: Path) -> str:
+    def generate_key(self, project_path: Path, used_files: Optional[List[str]] = None) -> str:
         """
         Generate unique cache key for project.
 
@@ -80,6 +80,8 @@ class DetectionCache:
 
         Args:
             project_path: Absolute path to project
+            used_files: List of files actually used during detection (for smart invalidation)
+                       If None, uses all indicator files (backward compatible)
 
         Returns:
             Cache key string
@@ -90,8 +92,15 @@ class DetectionCache:
         # 1. Resolve to absolute path
         abs_path = project_path.resolve()
 
-        # 2. Get mtime of key indicator files
-        key_files = self._get_key_indicator_files(abs_path)
+        # 2. Get key files (smart invalidation or fallback)
+        if used_files:
+            # Smart invalidation: only files actually used
+            key_files = [abs_path / f for f in used_files if (abs_path / f).exists()]
+            logger.debug(f"Smart invalidation: tracking {len(key_files)} used files")
+        else:
+            # Fallback: all indicator files (backward compatible)
+            key_files = self._get_key_indicator_files(abs_path)
+            logger.debug(f"Standard invalidation: tracking {len(key_files)} indicator files")
 
         # 3. Compute mtime hash
         mtime_hash = self._compute_mtime_hash(key_files)
@@ -183,36 +192,48 @@ class DetectionCache:
         - Key not in cache
         - Entry expired (TTL exceeded)
         - Entry version mismatch
+        - Files changed (smart invalidation)
         """
-        key = self.generate_key(project_path)
-
         # Acquire lock for reading
         with self._lock():
             # Load cache
             cache_data = self._load_cache()
 
-            # Check if key exists
-            if key not in cache_data:
-                logger.debug(f"Cache miss: key not found ({key[:16]}...)")
-                self._increment_miss()
-                return None
+            # Path hash for matching entries
+            abs_path = project_path.resolve()
+            path_hash = hashlib.sha256(str(abs_path).encode()).hexdigest()[:16]
 
-            entry = cache_data[key]
+            # Try to find matching entry (check all entries for this path)
+            for key, entry in cache_data.items():
+                if not key.startswith(path_hash):
+                    continue  # Not for this project
 
-            # Check TTL
-            age = time.time() - entry.get("cached_at", 0)
-            if age > self.ttl:
-                logger.debug(f"Cache miss: expired ({age:.0f}s > {self.ttl}s)")
-                self._increment_miss()
-                # Remove expired entry
-                del cache_data[key]
-                self._save_cache(cache_data)
-                return None
+                # Get stored used_files
+                used_files = entry.get("used_files", [])
 
-            # Cache hit!
-            logger.info(f"✓ Cache hit: {entry['result']['framework']} (age: {age:.0f}s)")
-            self._increment_hit()
-            return entry["result"]
+                # Re-generate key with same used_files
+                current_key = self.generate_key(project_path, used_files=used_files)
+
+                if current_key == key:
+                    # Key matches! Check TTL
+                    age = time.time() - entry.get("cached_at", 0)
+                    if age > self.ttl:
+                        logger.debug(f"Cache miss: expired ({age:.0f}s > {self.ttl}s)")
+                        self._increment_miss()
+                        # Remove expired entry
+                        del cache_data[key]
+                        self._save_cache(cache_data)
+                        return None
+
+                    # Cache hit!
+                    logger.info(f"✓ Cache hit: {entry['result']['framework']} (age: {age:.0f}s, {len(used_files)} files tracked)")
+                    self._increment_hit()
+                    return entry["result"]
+
+            # No matching entry found
+            logger.debug(f"Cache miss: no matching entry for {path_hash}")
+            self._increment_miss()
+            return None
 
     def set(self, project_path: Path, result: Dict):
         """
@@ -220,13 +241,18 @@ class DetectionCache:
 
         Args:
             project_path: Project root path
-            result: DetectionResult dict to cache
+            result: DetectionResult dict to cache (should include 'used_files')
         """
-        key = self.generate_key(project_path)
+        # Extract used_files for smart invalidation
+        used_files = result.get("used_files", [])
+
+        # Generate key with used_files (smart invalidation)
+        key = self.generate_key(project_path, used_files=used_files)
 
         # Create cache entry
         entry = {
             "result": result,
+            "used_files": used_files,  # Store for future lookups
             "cached_at": time.time(),
             "version": VERSION,
         }
