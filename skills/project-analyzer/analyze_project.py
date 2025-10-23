@@ -89,10 +89,12 @@ class ProjectAnalyzer:
         if success:
             print("\n✅ Successfully generated subagents!")
             print(f"\n📁 Location: {self.agents_dir}")
+            print("\n📖 Usage Guide: .claude/agents/SUBAGENT_GUIDE.md")
             print("\n💡 Next steps:")
-            print("  1. Review generated agents: ls .claude/agents/")
-            print("  2. Customize as needed")
-            print("  3. Commit to version control")
+            print("  1. Read SUBAGENT_GUIDE.md for auto-trigger keywords")
+            print("  2. Review generated agents: ls .claude/agents/")
+            print("  3. Start using: Just ask Claude naturally - subagents auto-trigger!")
+            print("  4. Commit to version control")
             return True
         else:
             print("\n❌ Failed to generate subagents")
@@ -188,7 +190,7 @@ class ProjectAnalyzer:
         for agent_name in detection.recommended_subagents:
             # Direct template file mapping (exact match first)
             template_file = templates_dir / f"{agent_name}.md"
-            
+
             # If exact match doesn't exist, try suffix-based mapping
             if not template_file.exists():
                 if agent_name.endswith("-tester"):
@@ -219,6 +221,9 @@ class ProjectAnalyzer:
         if generated_count == 0:
             logger.error("No templates could be generated")
             return False
+
+        # Generate SUBAGENT_GUIDE.md
+        self._generate_usage_guide(detection)
 
         logger.info(f"Generated {generated_count} subagents")
         return True
@@ -252,6 +257,277 @@ class ProjectAnalyzer:
             f.write(content)
 
         logger.info(f"Created: {output_file}")
+
+    def _generate_usage_guide(self, detection: DetectionResult):
+        """
+        Generate framework-specific subagent usage guide.
+
+        Args:
+            detection: Detection results
+        """
+        guide = f"""# Subagent Usage Guide for {detection.framework.upper()} Projects
+
+## 🎯 AGGRESSIVE Mode (Default)
+
+**You installed Adaptive Claude Agents = You want proactive subagent usage.**
+
+This guide was auto-generated based on your project:
+- Framework: **{detection.framework}**
+- Confidence: **{detection.confidence * 100:.0f}%**
+- Language: **{detection.language}**
+
+---
+
+## 🚀 Mandatory Subagent Usage Rules
+
+### ALWAYS Use Task Tool When:
+
+1. **3+ files need similar modifications**
+   - Example: "Apply blur fix to assessment.js, soap.js, nursing_plan.js"
+   - Subagent: `general-purpose`
+   - Time saved: 30-60 minutes
+
+2. **Searching entire codebase for patterns**
+   - Example: "Find all uses of version_number"
+   - Subagent: `Explore` (thoroughness: "very thorough")
+   - Time saved: 60-90 minutes
+
+3. **E2E testing or automated verification**
+   - Example: "Test login flow → API call → DB validation"
+   - Subagent: `general-purpose` + `chrome-devtools-tester`
+   - Time saved: 45+ minutes
+
+4. **2+ independent tasks can run in parallel**
+   - Example: "Update .gitignore + Refactor UI components"
+   - Subagent: Multiple `general-purpose` in single message
+   - Time saved: 30+ minutes
+
+---
+
+## 📊 Framework-Specific Workflows
+
+"""
+
+        # Add framework-specific recommendations
+        if detection.framework == "nextjs":
+            guide += """### Next.js Development
+
+#### Component Development (3+ components)
+**Auto-trigger**: Creating/modifying 3+ React components
+**Subagent**: `component-reviewer` (proactive)
+**Keywords**: "コンポーネント", "component", "Button", "Card", "Modal"
+
+```text
+User: "Add new Button, Card, and Modal components"
+→ AUTO: Use component-reviewer subagent
+```
+
+#### API Routes Testing
+**Auto-trigger**: Creating/testing API routes
+**Subagent**: `nextjs-tester` + `api-reviewer` (sequential chain)
+**Keywords**: "API", "endpoint", "route", "テスト"
+
+```text
+User: "Create /api/users endpoint and test it"
+→ AUTO: nextjs-tester (create) → api-reviewer (validate)
+```
+
+#### Type Safety (5+ files)
+**Auto-trigger**: TypeScript errors across multiple files
+**Subagent**: `type-checker` (parallel with code changes)
+**Keywords**: "型エラー", "type error", "TypeScript", "fix types"
+
+```text
+User: "Fix type errors in 5 component files"
+→ AUTO: type-checker subagent (parallel execution)
+```
+"""
+        elif detection.framework == "fastapi":
+            guide += """### FastAPI Development
+
+#### CRUD Endpoint Development (2+ endpoints)
+**Auto-trigger**: Creating 2+ API endpoints
+**Subagent**: `api-developer` + `api-reviewer` (sequential)
+**Keywords**: "CRUD", "endpoint", "API", "作成"
+
+```text
+User: "Add CRUD endpoints for User model"
+→ AUTO: api-developer (create) → api-reviewer (validate)
+```
+
+#### Async Testing
+**Auto-trigger**: Testing async functions
+**Subagent**: `fastapi-tester` + `async-checker` (sequential)
+**Keywords**: "async", "テスト", "test", "非同期"
+
+```text
+User: "Test database queries with async patterns"
+→ AUTO: fastapi-tester → async-checker (validate patterns)
+```
+"""
+        elif detection.framework == "go":
+            guide += """### Go Development
+
+#### Concurrency Review (MANDATORY)
+**Auto-trigger**: Using goroutines/channels in any file
+**Subagent**: `concurrency-checker` (mandatory)
+**Keywords**: "goroutine", "channel", "並行", "sync"
+
+```text
+User: "Review worker pool implementation"
+→ AUTO: concurrency-checker (race condition detection)
+```
+
+#### Large Refactoring (5+ files)
+**Auto-trigger**: Refactoring 5+ files
+**Subagent**: `go-reviewer` (proactive)
+**Keywords**: "refactor", "リファクタリング", "改善", "error handling"
+
+```text
+User: "Refactor error handling across services"
+→ AUTO: go-reviewer (idiomatic Go patterns)
+```
+"""
+        elif detection.framework == "flutter":
+            guide += """### Flutter Development
+
+#### Widget Development (3+ widgets)
+**Auto-trigger**: Creating/modifying 3+ widgets
+**Subagent**: `flutter-developer` (proactive)
+**Keywords**: "widget", "StatelessWidget", "StatefulWidget", "画面"
+
+```text
+User: "Create HomeScreen, ProfileScreen, SettingsScreen"
+→ AUTO: flutter-developer subagent
+```
+
+#### State Management Review
+**Auto-trigger**: Implementing state management
+**Subagent**: `flutter-developer` (pattern validation)
+**Keywords**: "Provider", "Riverpod", "BLoC", "状態管理"
+
+```text
+User: "Implement user authentication with Riverpod"
+→ AUTO: flutter-developer (Riverpod best practices)
+```
+"""
+        else:
+            # Generic workflow for other frameworks
+            guide += f"""### {detection.framework.capitalize()} Development
+
+#### Multi-File Modifications (3+ files)
+**Auto-trigger**: Modifying 3+ files with similar patterns
+**Subagent**: `general-purpose`
+
+```text
+User: "Apply the same fix to file1, file2, file3"
+→ AUTO: general-purpose subagent
+```
+
+#### Codebase Exploration
+**Auto-trigger**: Searching for usage patterns
+**Subagent**: `Explore` (thoroughness: "very thorough")
+
+```text
+User: "Where is X function used?"
+→ AUTO: Explore subagent
+```
+"""
+
+        guide += """
+---
+
+## 💰 Cost vs Time Analysis
+
+| Task Type | Files | Direct Cost | Subagent Cost | Time Saved | **Decision** |
+|-----------|-------|-------------|---------------|------------|--------------|
+| Single file edit | 1 | 5k tokens | 25k tokens | 0 min | ❌ **Direct** |
+| Similar pattern | 3-4 | 15k tokens | 35k tokens | 30 min | ✅ **Subagent** |
+| Large refactor | 5+ | 30k tokens | 50k tokens | 60 min | ✅✅ **Subagent** |
+| Codebase search | N/A | 40k tokens | 60k tokens | 90 min | ✅✅✅ **Explore** |
+
+**Rule of Thumb**: 20k token overhead is acceptable for 30+ minutes saved.
+
+---
+
+## 🎯 Auto-Trigger Keywords
+
+The following keywords will **automatically trigger** subagent delegation:
+
+"""
+
+        # Add auto-trigger keywords for each recommended subagent
+        for agent in detection.recommended_subagents:
+            if agent.endswith("-tester"):
+                guide += f"- **{agent}**: `テスト`, `test`, `verify`, `検証`, `validation`\n"
+            elif agent.endswith("-reviewer"):
+                guide += f"- **{agent}**: `レビュー`, `review`, `改善`, `improve`, `validate`\n"
+            elif agent.endswith("-checker"):
+                guide += f"- **{agent}**: `チェック`, `check`, `lint`, `validate`, `型エラー`\n"
+            elif agent.endswith("-developer"):
+                guide += f"- **{agent}**: `作成`, `create`, `開発`, `develop`, `implement`\n"
+
+        guide += """
+---
+
+## 📈 Success Metrics
+
+Track your efficiency with these targets:
+
+- **Subagent Usage Rate**: 20-30% of complex tasks
+- **Time Saved**: 2-4 hours per week
+- **Token Efficiency**: Accept 20k overhead for 30+ min saved
+
+### Monitoring
+
+Ask Claude at end of session:
+```text
+"How many times did you use Task tool today? Show me efficiency stats."
+```
+
+---
+
+## 🚫 Common Mistakes to Avoid
+
+1. ❌ **Using subagents for 1-2 file edits** (too expensive)
+   - Fix: Use Read/Edit tools directly
+
+2. ❌ **NOT using subagents for 5+ file patterns** (wastes time)
+   - Fix: Always delegate to general-purpose
+
+3. ❌ **Serial execution of parallel tasks** (missed opportunity)
+   - Fix: Single message with multiple Task tool calls
+
+4. ❌ **Manual grep/glob for codebase searches** (inefficient)
+   - Fix: Use Explore subagent with "very thorough"
+
+---
+
+## 🔥 Quick Reference
+
+```text
+3+ files → Task tool (general-purpose)
+Codebase search → Task tool (Explore, "very thorough")
+E2E testing → Task tool (general-purpose + chrome-devtools-tester)
+Parallel tasks → Single message, multiple Task tools
+```
+
+---
+
+**Generated by**: Adaptive Claude Agents v0.4.2-beta
+**Project**: {detection.framework} ({detection.confidence * 100:.0f}% confidence)
+**Policy**: AGGRESSIVE (default for all installations)
+
+💡 **Remember**: You installed this tool to maximize efficiency. Trust the subagents!
+"""
+
+        # Write to file
+        guide_path = self.agents_dir / "SUBAGENT_GUIDE.md"
+        with open(guide_path, 'w', encoding='utf-8') as f:
+            f.write(guide)
+
+        logger.info(f"Generated usage guide: {guide_path}")
+        print(f"  ✓ Generated: SUBAGENT_GUIDE.md")
 
 
 def main():

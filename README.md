@@ -87,6 +87,47 @@ python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/a
 
 ---
 
+## 🎯 When to Use Subagents (Efficiency Guide)
+
+**Philosophy**: If you installed this tool, you want proactive subagent usage. Trust the automation!
+
+### ✅ MUST Use Subagents
+
+| Scenario | Example | Subagent | Time Saved |
+|----------|---------|----------|------------|
+| **3+ files with similar patterns** | "Apply blur fix to assessment.js, soap.js, nursing_plan.js" | `general-purpose` | 30-60 min |
+| **Codebase-wide searches** | "Find all uses of version_number" | `Explore` ("very thorough") | 60-90 min |
+| **E2E testing workflows** | "Test login → API call → DB validation" | `general-purpose` + framework tester | 45+ min |
+| **Parallel independent tasks** | "Update .gitignore + Refactor UI components" | Multiple `general-purpose` | 30+ min |
+
+### ❌ Skip Subagents
+
+- Single file small edits (< 10 lines)
+- Simple 1-2 file searches where location is known
+- Token-constrained environments (rare)
+
+### 💡 Pro Tips
+
+1. **Default to subagents for 3+ files** - 20k token overhead is worth it
+2. **Use Explore agent liberally** - Better than manual grep/glob
+3. **Parallelize independent tasks** - Single message, multiple Task tool calls
+4. **Trust auto-triggers** - Keywords like "テスト", "test", "review" activate subagents
+
+### 📊 Cost-Benefit Analysis
+
+| Task Type | Direct Cost | Subagent Cost | Time Saved | **Recommendation** |
+|-----------|-------------|---------------|------------|---------------------|
+| 1 file edit | 5k tokens | 25k tokens | 0 min | ❌ Direct |
+| 3-4 files | 15k tokens | 35k tokens | 30 min | ✅ Subagent |
+| 5+ files | 30k tokens | 50k tokens | 60 min | ✅✅ Subagent |
+| Codebase search | 40k tokens | 60k tokens | 90 min | ✅✅✅ Explore |
+
+**Target**: 20-30% subagent usage rate in complex multi-file projects.
+
+See [EXAMPLES.md](./docs/EXAMPLES.md#subagent-workflows) for detailed walkthroughs.
+
+---
+
 ## 📚 Documentation
 
 | Document | Description |
