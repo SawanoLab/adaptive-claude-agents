@@ -852,6 +852,1810 @@ mcp__serena__find_symbol("User", "app/models/user.py", include_body=true)
 - **Expose passwords**: Never return hashed_password in responses
 - **Manual SQL**: Use SQLAlchemy ORM when possible
 
+## Troubleshooting
+
+### Issue 1: "This connection is already in a transaction" with AsyncSession
+
+**Symptom**: `InvalidRequestError: This connection is already in a transaction` when using nested database operations.
+
+**Cause**: Trying to start a new transaction while already in one, or mixing `begin()` with context managers incorrectly.
+
+**Solution**:
+
+```python
+# ❌ Bad: Nested begin() creates conflict
+async def create_user_with_posts(db: AsyncSession, user_data: dict):
+    async with db.begin():  # Already in transaction from dependency
+        user = User(**user_data)
+        db.add(user)
+
+        async with db.begin():  # ERROR: Already in transaction!
+            post = Post(author_id=user.id)
+            db.add(post)
+
+
+# ✅ Good: Single transaction with flush
+async def create_user_with_posts(db: AsyncSession, user_data: dict):
+    """Create user and posts in single transaction."""
+    user = User(**user_data)
+    db.add(user)
+    await db.flush()  # Flush to get user.id, but don't commit
+
+    post = Post(author_id=user.id, title="First Post")
+    db.add(post)
+
+    await db.commit()  # Single commit for all operations
+    await db.refresh(user)
+    return user
+
+
+# ✅ Good: Use flush() for intermediate steps
+async def complex_operation(db: AsyncSession):
+    """Example with multiple steps requiring IDs."""
+    # Step 1: Create parent
+    user = User(email="test@example.com")
+    db.add(user)
+    await db.flush()  # Get user.id without committing
+
+    # Step 2: Create children
+    profile = UserProfile(user_id=user.id)
+    db.add(profile)
+
+    posts = [Post(author_id=user.id, title=f"Post {i}") for i in range(3)]
+    db.add_all(posts)
+
+    # Step 3: Commit everything
+    await db.commit()
+```
+
+**Prevention**: Use `flush()` for intermediate steps that need generated IDs, reserve `commit()` for the end of the operation.
+
+---
+
+### Issue 2: N+1 Query Problem Causing Slow Performance
+
+**Symptom**: API endpoint takes 5+ seconds to load list of posts with authors. Database shows hundreds of individual SELECT queries.
+
+**Cause**: Lazy loading relationships in a loop, causing one query per relationship access.
+
+**Solution**:
+
+```python
+# ❌ Bad: N+1 queries (1 for posts + N for each author)
+@router.get("/posts/")
+async def get_posts(db: AsyncSession):
+    result = await db.execute(select(Post).limit(50))
+    posts = result.scalars().all()
+
+    return [
+        {
+            "id": post.id,
+            "title": post.title,
+            "author": post.author.full_name  # Separate query for EACH post!
+        }
+        for post in posts
+    ]
+
+
+# ✅ Good: Single query with joinedload (one-to-one or many-to-one)
+@router.get("/posts/")
+async def get_posts(db: AsyncSession):
+    result = await db.execute(
+        select(Post)
+        .options(joinedload(Post.author))  # Eager load with JOIN
+        .limit(50)
+    )
+    posts = result.unique().scalars().all()
+
+    return [
+        {
+            "id": post.id,
+            "title": post.title,
+            "author": post.author.full_name  # No additional query!
+        }
+        for post in posts
+    ]
+
+
+# ✅ Good: selectinload for collections (one-to-many)
+@router.get("/users-with-posts/")
+async def get_users_with_posts(db: AsyncSession):
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.posts))  # Two queries total (not N+1)
+        .limit(10)
+    )
+    users = result.scalars().all()
+
+    return [
+        {
+            "id": user.id,
+            "email": user.email,
+            "posts_count": len(user.posts)  # No additional queries
+        }
+        for user in users
+    ]
+
+
+# ✅ Good: Load multiple relationships
+result = await db.execute(
+    select(Post)
+    .options(
+        joinedload(Post.author),           # One-to-one with JOIN
+        selectinload(Post.tags),           # Many-to-many with IN query
+        selectinload(Post.comments)        # One-to-many with IN query
+    )
+    .where(Post.published == True)
+)
+posts = result.unique().scalars().all()
+```
+
+**Monitoring**: Enable SQL logging to detect N+1 queries:
+
+```python
+# database.py
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=True,  # Log all SQL queries (development only)
+)
+```
+
+---
+
+### Issue 3: DetachedInstanceError When Accessing Relationships
+
+**Symptom**: `DetachedInstanceError: Instance <User at 0x...> is not bound to a Session` when accessing relationships after session closes.
+
+**Cause**: Trying to access lazy-loaded relationships after the session has closed or expired.
+
+**Solution**:
+
+```python
+# ❌ Bad: Accessing relationship after session closes
+@router.get("/users/{user_id}")
+async def get_user(user_id: int, db: AsyncSession):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user  # Session closes here
+
+
+# In response model (outside function):
+# user.posts  # ERROR: Session closed, can't lazy load!
+
+
+# ✅ Good: Eager load relationships before session closes
+@router.get("/users/{user_id}", response_model=UserWithPosts)
+async def get_user(user_id: int, db: AsyncSession):
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.posts))  # Eager load
+        .where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user  # All data loaded, safe to return
+
+
+# ✅ Good: Set expire_on_commit=False (for specific cases)
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,  # Don't expire objects after commit
+)
+
+
+# ✅ Good: Use refresh() to re-attach
+user = await db.get(User, user_id)
+await db.commit()
+await db.refresh(user, ["posts"])  # Reload specific relationships
+```
+
+**Best Practice**: Always eager load relationships you'll need, or set `expire_on_commit=False` for read-only sessions.
+
+---
+
+### Issue 4: Alembic Migration Fails with "Target database is not up to date"
+
+**Symptom**: Running `alembic upgrade head` fails with version mismatch error.
+
+**Cause**: Database schema was manually modified, or migration history is out of sync.
+
+**Solution**:
+
+```bash
+# Check current database version
+alembic current
+
+# Check migration history
+alembic history
+
+# If database is ahead of migrations (manual changes):
+# Option 1: Stamp database to current revision (dangerous, skips migrations)
+alembic stamp head
+
+# Option 2: Create migration for manual changes (recommended)
+alembic revision --autogenerate -m "Sync manual changes"
+# Review the generated migration carefully!
+alembic upgrade head
+
+# If database is behind:
+# Apply all pending migrations
+alembic upgrade head
+
+# If migration fails mid-way:
+# Check which revision failed
+alembic current
+
+# Downgrade to last working revision
+alembic downgrade <revision_id>
+
+# Fix the migration file, then retry
+alembic upgrade head
+```
+
+**Prevention**:
+
+```python
+# alembic/versions/xxx_migration.py
+def upgrade() -> None:
+    """Add user_role column with default value."""
+    # ✅ Good: Handle existing data
+    op.add_column('users', sa.Column('role', sa.String(50), nullable=True))
+
+    # Set default for existing rows
+    op.execute("UPDATE users SET role = 'user' WHERE role IS NULL")
+
+    # Now make it non-nullable
+    op.alter_column('users', 'role', nullable=False)
+
+
+def downgrade() -> None:
+    """Remove user_role column."""
+    op.drop_column('users', 'role')
+```
+
+**Best Practice**: Never manually modify database schema. Always use Alembic migrations, and test migrations on staging database first.
+
+---
+
+### Issue 5: Unique Constraint Violation When Updating
+
+**Symptom**: `IntegrityError: duplicate key value violates unique constraint "users_email_key"` when updating user, even though email didn't change.
+
+**Cause**: Update query includes the unique field with its current value, conflicting with itself.
+
+**Solution**:
+
+```python
+# ❌ Bad: Always updating email (even if unchanged)
+async def update_user(db: AsyncSession, user_id: int, update_data: dict):
+    result = await db.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(**update_data)  # Includes email with current value
+        .returning(User)
+    )
+    await db.commit()
+    return result.scalar_one()
+
+
+# ✅ Good: Exclude unchanged fields
+async def update_user(db: AsyncSession, user_id: int, update_data: dict):
+    """Update user, excluding fields that haven't changed."""
+    # Get current user
+    user = await db.get(User, user_id)
+    if not user:
+        raise ValueError("User not found")
+
+    # Only update changed fields
+    for key, value in update_data.items():
+        if hasattr(user, key) and getattr(user, key) != value:
+            setattr(user, key, value)
+
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+# ✅ Good: Use exclude_unset from Pydantic
+from pydantic import BaseModel
+
+class UserUpdate(BaseModel):
+    email: str | None = None
+    full_name: str | None = None
+
+async def update_user(
+    db: AsyncSession,
+    user_id: int,
+    user_update: UserUpdate
+):
+    """Update user with only provided fields."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise ValueError("User not found")
+
+    # Only update provided fields
+    update_dict = user_update.model_dump(exclude_unset=True)
+    for key, value in update_dict.items():
+        setattr(user, key, value)
+
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+# ✅ Good: Handle unique constraint explicitly
+from sqlalchemy.exc import IntegrityError
+
+async def update_user(db: AsyncSession, user_id: int, email: str):
+    try:
+        user = await db.get(User, user_id)
+        user.email = email
+        await db.commit()
+        return user
+    except IntegrityError:
+        await db.rollback()
+        raise ValueError(f"Email {email} is already taken")
+```
+
+---
+
+### Issue 6: Connection Pool Exhaustion Under Load
+
+**Symptom**: `sqlalchemy.exc.TimeoutError: QueuePool limit of size X overflow Y reached` during high traffic.
+
+**Cause**: Not closing sessions properly, or pool size too small for concurrent requests.
+
+**Solution**:
+
+```python
+# ❌ Bad: Session not closed on error
+async def get_user(user_id: int):
+    db = AsyncSessionLocal()
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one()  # Raises if not found
+    # Session never closed on exception!
+    await db.close()
+    return user
+
+
+# ✅ Good: Use context manager (auto-close)
+async def get_user(user_id: int):
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        return user  # Session closed automatically
+
+
+# ✅ Good: Increase pool size for high traffic
+engine = create_async_engine(
+    DATABASE_URL,
+    pool_size=20,        # Default: 5 (increase for production)
+    max_overflow=40,     # Default: 10 (connections beyond pool_size)
+    pool_timeout=30,     # Wait time before timeout (seconds)
+    pool_recycle=3600,   # Recycle connections after 1 hour
+    pool_pre_ping=True,  # Verify connection before using
+)
+
+
+# ✅ Good: Use NullPool for serverless (e.g., AWS Lambda)
+engine = create_async_engine(
+    DATABASE_URL,
+    poolclass=NullPool,  # No connection pooling
+)
+
+
+# ✅ Good: Monitor pool status
+from sqlalchemy import event
+
+@event.listens_for(engine.sync_engine, "connect")
+def receive_connect(dbapi_conn, connection_record):
+    print(f"New connection: {dbapi_conn}")
+
+@event.listens_for(engine.sync_engine, "checkout")
+def receive_checkout(dbapi_conn, connection_record, connection_proxy):
+    print(f"Connection checked out from pool")
+```
+
+**Monitoring**:
+
+```python
+# Get pool status
+print(f"Pool size: {engine.pool.size()}")
+print(f"Checked out: {engine.pool.checkedout()}")
+print(f"Overflow: {engine.pool.overflow()}")
+```
+
+---
+
+### Issue 7: Slow Queries with Complex Joins
+
+**Symptom**: Queries with multiple joins take 10+ seconds, causing timeout errors.
+
+**Cause**: Missing indexes on foreign keys, or inefficient join strategy.
+
+**Solution**:
+
+```python
+# ❌ Bad: No indexes on foreign keys
+class Post(Base):
+    __tablename__ = "posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    # No index on author_id!
+
+
+# ✅ Good: Index foreign keys
+class Post(Base):
+    __tablename__ = "posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    author_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id"),
+        index=True  # Index for faster joins
+    )
+
+    # Composite index for common query patterns
+    __table_args__ = (
+        Index('ix_post_author_created', 'author_id', 'created_at'),
+    )
+
+
+# ❌ Bad: Loading all data with complex joins
+result = await db.execute(
+    select(Post)
+    .join(Post.author)
+    .join(Post.comments)
+    .join(Comment.author)
+    .options(
+        joinedload(Post.author),
+        joinedload(Post.comments).joinedload(Comment.author)
+    )
+)
+# Massive JOIN query, slow!
+
+
+# ✅ Good: Load data in steps
+# Step 1: Get posts with authors
+result = await db.execute(
+    select(Post)
+    .options(joinedload(Post.author))
+    .where(Post.published == True)
+    .limit(10)
+)
+posts = result.unique().scalars().all()
+
+# Step 2: Load comments separately with IN query
+post_ids = [post.id for post in posts]
+comments_result = await db.execute(
+    select(Comment)
+    .options(joinedload(Comment.author))
+    .where(Comment.post_id.in_(post_ids))
+)
+comments = comments_result.unique().scalars().all()
+
+# Step 3: Group comments by post_id
+from collections import defaultdict
+comments_by_post = defaultdict(list)
+for comment in comments:
+    comments_by_post[comment.post_id].append(comment)
+
+
+# ✅ Good: Use raw SQL for complex aggregations
+from sqlalchemy import text
+
+query = text("""
+    SELECT
+        p.id,
+        p.title,
+        u.full_name AS author_name,
+        COUNT(c.id) AS comment_count
+    FROM posts p
+    JOIN users u ON p.author_id = u.id
+    LEFT JOIN comments c ON p.id = c.post_id
+    WHERE p.published = TRUE
+    GROUP BY p.id, p.title, u.full_name
+    ORDER BY comment_count DESC
+    LIMIT 10
+""")
+
+result = await db.execute(query)
+rows = result.fetchall()
+```
+
+**Profiling**:
+
+```python
+# Enable query timing
+import time
+
+start = time.time()
+result = await db.execute(select(Post))
+posts = result.scalars().all()
+print(f"Query took {time.time() - start:.2f} seconds")
+
+# Use EXPLAIN to analyze query plan
+query = select(Post).join(Post.author)
+explain_query = query.compile(compile_kwargs={"literal_binds": True})
+result = await db.execute(text(f"EXPLAIN ANALYZE {explain_query}"))
+print(result.fetchall())
+```
+
+---
+
+## Anti-Patterns
+
+### 1. Not Using Mapped[] Type Annotations
+
+**Problem**: Missing type safety, IDE autocomplete doesn't work, harder to catch bugs.
+
+```python
+# ❌ Bad: No type annotations (SQLAlchemy 1.x style)
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    posts = relationship("Post", back_populates="author")
+
+
+# ✅ Good: Mapped[] annotations (SQLAlchemy 2.0 style)
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    posts: Mapped[List["Post"]] = relationship(
+        "Post", back_populates="author"
+    )
+```
+
+**Why it matters**: Type annotations provide compile-time safety, better IDE support, and make code more maintainable.
+
+---
+
+### 2. Using Sync SQLAlchemy with FastAPI
+
+**Problem**: Blocks event loop, degrades performance under concurrent requests.
+
+```python
+# ❌ Bad: Sync engine with FastAPI (blocks event loop)
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+
+engine = create_engine("postgresql://user:pass@localhost/db")
+SessionLocal = sessionmaker(bind=engine)
+
+@router.get("/users/")
+def get_users(db: Session = Depends(get_db)):  # Sync function!
+    users = db.query(User).all()  # Blocks other requests
+    return users
+
+
+# ✅ Good: Async engine with async session
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+
+engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/db")
+AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession)
+
+@router.get("/users/")
+async def get_users(db: AsyncSession = Depends(get_db)):  # Async function!
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    return users
+```
+
+**Why it matters**: Async is essential for FastAPI's concurrency model. Sync database calls block the event loop, preventing other requests from being processed.
+
+---
+
+### 3. Not Using Alembic Migrations
+
+**Problem**: Database schema changes are not versioned, making deployments risky and rollbacks impossible.
+
+```python
+# ❌ Bad: Manually creating/modifying schema
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    # Changes not versioned!
+
+# ❌ Bad: SQL scripts without version control
+# ALTER TABLE users ADD COLUMN phone VARCHAR(20);
+
+
+# ✅ Good: Use Alembic for all schema changes
+# 1. Create migration
+# $ alembic revision --autogenerate -m "Add phone column to users"
+
+# 2. Review generated migration
+def upgrade() -> None:
+    op.add_column('users', sa.Column('phone', sa.String(20), nullable=True))
+
+def downgrade() -> None:
+    op.drop_column('users', 'phone')
+
+# 3. Apply migration
+# $ alembic upgrade head
+
+# 4. Rollback if needed
+# $ alembic downgrade -1
+```
+
+**Why it matters**: Migrations provide version control for database schema, enable safe rollbacks, and make deployments reproducible across environments.
+
+---
+
+### 4. Not Handling IntegrityError Properly
+
+**Problem**: Generic 500 errors instead of user-friendly validation messages.
+
+```python
+# ❌ Bad: Let IntegrityError bubble up
+@router.post("/users/", status_code=201)
+async def create_user(user: UserCreate, db: AsyncSession):
+    db_user = User(email=user.email, hashed_password=get_password_hash(user.password))
+    db.add(db_user)
+    await db.commit()  # Raises IntegrityError if email exists
+    return db_user
+
+
+# ✅ Good: Catch and handle IntegrityError
+from sqlalchemy.exc import IntegrityError
+from fastapi import HTTPException, status
+
+@router.post("/users/", status_code=201)
+async def create_user(user: UserCreate, db: AsyncSession):
+    try:
+        db_user = User(
+            email=user.email,
+            hashed_password=get_password_hash(user.password)
+        )
+        db.add(db_user)
+        await db.commit()
+        await db.refresh(db_user)
+        return db_user
+
+    except IntegrityError as e:
+        await db.rollback()
+
+        if "users_email_key" in str(e.orig):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Email {user.email} is already registered"
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Database constraint violation"
+        )
+
+
+# ✅ Good: Check before insert (race condition possible)
+@router.post("/users/", status_code=201)
+async def create_user(user: UserCreate, db: AsyncSession):
+    # Check if email exists
+    result = await db.execute(
+        select(User).where(User.email == user.email)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Email {user.email} is already registered"
+        )
+
+    db_user = User(email=user.email, hashed_password=get_password_hash(user.password))
+    db.add(db_user)
+    await db.commit()
+    await db.refresh(db_user)
+    return db_user
+```
+
+**Why it matters**: Users get clear, actionable error messages instead of generic 500 errors. Improves UX and debugging.
+
+---
+
+### 5. Ignoring N+1 Query Problem
+
+**Problem**: API slows down dramatically as data grows, making 100+ database queries for a single endpoint.
+
+```python
+# ❌ Bad: Lazy loading in loop (N+1 queries)
+@router.get("/users-with-posts/")
+async def get_users_with_posts(db: AsyncSession):
+    result = await db.execute(select(User).limit(10))
+    users = result.scalars().all()
+
+    return [
+        {
+            "id": user.id,
+            "email": user.email,
+            "posts": [
+                {"id": post.id, "title": post.title}
+                for post in user.posts  # Separate query for EACH user!
+            ]
+        }
+        for user in users
+    ]
+    # Total: 1 + 10 = 11 queries
+
+
+# ✅ Good: Eager load with selectinload
+@router.get("/users-with-posts/")
+async def get_users_with_posts(db: AsyncSession):
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.posts))  # Load all posts with IN query
+        .limit(10)
+    )
+    users = result.scalars().all()
+
+    return [
+        {
+            "id": user.id,
+            "email": user.email,
+            "posts": [
+                {"id": post.id, "title": post.title}
+                for post in user.posts  # No additional queries!
+            ]
+        }
+        for user in users
+    ]
+    # Total: 2 queries (users + posts)
+```
+
+**Why it matters**: Difference between 1 second and 30 seconds response time. Critical for production performance.
+
+---
+
+### 6. Not Using Transactions for Multi-Step Operations
+
+**Problem**: Partial data written to database on error, leaving inconsistent state.
+
+```python
+# ❌ Bad: No transaction, partial writes on error
+@router.post("/users-with-profile/")
+async def create_user_with_profile(
+    user_data: UserCreate,
+    profile_data: ProfileCreate,
+    db: AsyncSession
+):
+    # Step 1: Create user
+    user = User(email=user_data.email, hashed_password=get_password_hash(user_data.password))
+    db.add(user)
+    await db.commit()  # Committed!
+    await db.refresh(user)
+
+    # Step 2: Create profile (if this fails, user is already in DB!)
+    profile = UserProfile(user_id=user.id, avatar_url=profile_data.avatar_url)
+    db.add(profile)
+    await db.commit()  # ERROR: If this fails, user exists but profile doesn't!
+
+    return user
+
+
+# ✅ Good: Single transaction with flush()
+@router.post("/users-with-profile/")
+async def create_user_with_profile(
+    user_data: UserCreate,
+    profile_data: ProfileCreate,
+    db: AsyncSession
+):
+    try:
+        # Step 1: Create user
+        user = User(
+            email=user_data.email,
+            hashed_password=get_password_hash(user_data.password)
+        )
+        db.add(user)
+        await db.flush()  # Get user.id without committing
+
+        # Step 2: Create profile
+        profile = UserProfile(user_id=user.id, avatar_url=profile_data.avatar_url)
+        db.add(profile)
+
+        # Step 3: Commit both operations atomically
+        await db.commit()
+        await db.refresh(user)
+
+        return user
+
+    except Exception:
+        await db.rollback()  # Rollback both operations
+        raise
+
+
+# ✅ Good: Explicit transaction block
+@router.post("/users-with-profile/")
+async def create_user_with_profile(
+    user_data: UserCreate,
+    profile_data: ProfileCreate,
+    db: AsyncSession
+):
+    async with db.begin():  # Explicit transaction
+        user = User(email=user_data.email, hashed_password=get_password_hash(user_data.password))
+        db.add(user)
+        await db.flush()
+
+        profile = UserProfile(user_id=user.id, avatar_url=profile_data.avatar_url)
+        db.add(profile)
+
+        # Auto-commit on success, auto-rollback on exception
+
+    await db.refresh(user)
+    return user
+```
+
+**Why it matters**: Data consistency. Either all operations succeed, or none do. No partial writes.
+
+---
+
+### 7. Not Setting expire_on_commit Correctly
+
+**Problem**: Accessing model attributes after commit causes lazy load, or DetachedInstanceError.
+
+```python
+# ❌ Bad: Default expire_on_commit=True causes issues
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=True,  # Default: objects expired after commit
+)
+
+@router.post("/users/")
+async def create_user(user_data: UserCreate, db: AsyncSession):
+    user = User(email=user_data.email, hashed_password=get_password_hash(user_data.password))
+    db.add(user)
+    await db.commit()
+
+    # User object expired! Accessing attributes triggers lazy load
+    print(user.email)  # Lazy load (or DetachedInstanceError if session closed)
+
+
+# ✅ Good: Use expire_on_commit=False for read-heavy apps
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,  # Objects stay loaded after commit
+)
+
+@router.post("/users/")
+async def create_user(user_data: UserCreate, db: AsyncSession):
+    user = User(email=user_data.email, hashed_password=get_password_hash(user_data.password))
+    db.add(user)
+    await db.commit()
+
+    # User object still loaded
+    print(user.email)  # No additional query
+
+
+# ✅ Good: Use refresh() after commit
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=True,  # Keep default
+)
+
+@router.post("/users/")
+async def create_user(user_data: UserCreate, db: AsyncSession):
+    user = User(email=user_data.email, hashed_password=get_password_hash(user_data.password))
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)  # Explicitly reload
+
+    print(user.email)  # Loaded
+    return user
+```
+
+**Why it matters**: Controls when objects are reloaded from database. Choose based on your use case (read-heavy vs write-heavy).
+
+---
+
+## Complete Workflows
+
+### Workflow 1: User Authentication System with SQLAlchemy
+
+**Scenario**: Complete user authentication with registration, login, password hashing, and JWT tokens.
+
+```python
+# models.py
+from sqlalchemy import String, Boolean, DateTime
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
+from datetime import datetime
+
+class User(Base):
+    """User model with authentication fields."""
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
+    full_name: Mapped[str | None] = mapped_column(String(100))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
+# schemas.py
+from pydantic import BaseModel, EmailStr, Field
+
+class UserCreate(BaseModel):
+    """Schema for user registration."""
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=100)
+    full_name: str | None = None
+
+class UserResponse(BaseModel):
+    """Schema for user response (no password)."""
+    id: int
+    email: str
+    full_name: str | None
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+class Token(BaseModel):
+    """Schema for JWT token response."""
+    access_token: str
+    token_type: str
+
+
+# security.py
+from passlib.context import CryptContext
+from jose import jwt, JWTError
+from datetime import datetime, timedelta
+from app.core.config import settings
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify plain password against hashed password."""
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    """Hash password with bcrypt."""
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict) -> str:
+    """Create JWT access token."""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+
+    encoded_jwt = jwt.encode(
+        to_encode,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM
+    )
+    return encoded_jwt
+
+
+# repositories/user.py
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
+
+class UserRepository:
+    """Repository for user database operations."""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def get_by_email(self, email: str) -> Optional[User]:
+        """Get user by email."""
+        result = await self.db.execute(
+            select(User).where(User.email == email)
+        )
+        return result.scalar_one_or_none()
+
+    async def create(self, email: str, hashed_password: str, full_name: str | None = None) -> User:
+        """Create new user."""
+        user = User(
+            email=email,
+            hashed_password=hashed_password,
+            full_name=full_name
+        )
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def authenticate(self, email: str, password: str) -> Optional[User]:
+        """Authenticate user by email and password."""
+        user = await self.get_by_email(email)
+        if not user:
+            return None
+        if not verify_password(password, user.hashed_password):
+            return None
+        return user
+
+
+# routers/auth.py
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+
+from app.database import get_db
+from app.repositories.user import UserRepository
+from app.schemas import UserCreate, UserResponse, Token
+from app.core.security import get_password_hash, create_access_token
+
+router = APIRouter(prefix="/auth", tags=["authentication"])
+
+
+@router.post("/register", response_model=UserResponse, status_code=201)
+async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+    """Register new user."""
+    repo = UserRepository(db)
+
+    # Check if user exists
+    existing_user = await repo.get_by_email(user_data.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Email {user_data.email} is already registered"
+        )
+
+    try:
+        # Create user
+        hashed_password = get_password_hash(user_data.password)
+        user = await repo.create(
+            email=user_data.email,
+            hashed_password=hashed_password,
+            full_name=user_data.full_name
+        )
+        return user
+
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+
+
+@router.post("/login", response_model=Token)
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db)
+):
+    """Login with email and password."""
+    repo = UserRepository(db)
+
+    # Authenticate user
+    user = await repo.authenticate(
+        email=form_data.username,  # OAuth2 uses 'username' field
+        password=form_data.password
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user account"
+        )
+
+    # Create access token
+    access_token = create_access_token(data={"sub": str(user.id)})
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
+
+
+# dependencies.py
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import jwt, JWTError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.core.config import settings
+from app.models import User
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """Get current authenticated user from JWT token."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM]
+        )
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    user = await db.get(User, int(user_id))
+    if user is None:
+        raise credentials_exception
+
+    return user
+
+
+async def get_current_active_user(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """Get current active user."""
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+
+# Usage in protected endpoints
+@router.get("/users/me", response_model=UserResponse)
+async def read_users_me(current_user: User = Depends(get_current_active_user)):
+    """Get current user profile."""
+    return current_user
+```
+
+**Key Features**:
+- ✅ Secure password hashing with bcrypt
+- ✅ JWT token-based authentication
+- ✅ Email uniqueness validation
+- ✅ Repository pattern for database operations
+- ✅ Dependency injection for authentication
+- ✅ Comprehensive error handling
+
+---
+
+### Workflow 2: Multi-Tenant Blog System with Relationships
+
+**Scenario**: Blog platform with users, posts, comments, and tags. Demonstrates complex relationships and query optimization.
+
+```python
+# models.py
+from sqlalchemy import Integer, String, Text, ForeignKey, Boolean, DateTime, Table
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+from typing import List
+from datetime import datetime
+
+# Association table for many-to-many (posts <-> tags)
+post_tags = Table(
+    "post_tags",
+    Base.metadata,
+    mapped_column("post_id", Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True),
+    mapped_column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    full_name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Relationships
+    posts: Mapped[List["Post"]] = relationship(
+        "Post",
+        back_populates="author",
+        cascade="all, delete-orphan"
+    )
+    comments: Mapped[List["Comment"]] = relationship(
+        "Comment",
+        back_populates="author",
+        cascade="all, delete-orphan"
+    )
+
+
+class Post(Base):
+    __tablename__ = "posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    published: Mapped[bool] = mapped_column(Boolean, default=False)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    author_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    # Relationships
+    author: Mapped["User"] = relationship("User", back_populates="posts")
+    comments: Mapped[List["Comment"]] = relationship(
+        "Comment",
+        back_populates="post",
+        cascade="all, delete-orphan"
+    )
+    tags: Mapped[List["Tag"]] = relationship(
+        "Tag",
+        secondary=post_tags,
+        back_populates="posts"
+    )
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    content: Mapped[str] = mapped_column(Text)
+    post_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("posts.id", ondelete="CASCADE"),
+        index=True
+    )
+    author_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Relationships
+    post: Mapped["Post"] = relationship("Post", back_populates="comments")
+    author: Mapped["User"] = relationship("User", back_populates="comments")
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+
+    # Relationships
+    posts: Mapped[List["Post"]] = relationship(
+        "Post",
+        secondary=post_tags,
+        back_populates="tags"
+    )
+
+
+# repositories/post.py
+from sqlalchemy import select, func, and_, desc
+from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Optional
+
+class PostRepository:
+    """Repository for post operations with optimized queries."""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def get_published_posts(
+        self,
+        skip: int = 0,
+        limit: int = 20,
+        tag_name: str | None = None
+    ) -> List[Post]:
+        """Get published posts with author and tags (optimized)."""
+        query = (
+            select(Post)
+            .options(
+                joinedload(Post.author),      # Eager load author
+                selectinload(Post.tags)        # Eager load tags
+            )
+            .where(Post.published == True)
+            .order_by(Post.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+
+        # Filter by tag if provided
+        if tag_name:
+            query = query.join(Post.tags).where(Tag.name == tag_name)
+
+        result = await self.db.execute(query)
+        return list(result.unique().scalars().all())
+
+    async def get_post_with_details(self, post_id: int) -> Optional[Post]:
+        """Get single post with all relationships loaded."""
+        result = await self.db.execute(
+            select(Post)
+            .options(
+                joinedload(Post.author),
+                selectinload(Post.tags),
+                selectinload(Post.comments).joinedload(Comment.author)
+            )
+            .where(Post.id == post_id)
+        )
+        return result.unique().scalar_one_or_none()
+
+    async def get_popular_posts(self, limit: int = 10) -> List[dict]:
+        """Get posts with most comments (aggregation query)."""
+        result = await self.db.execute(
+            select(
+                Post.id,
+                Post.title,
+                User.full_name.label("author_name"),
+                func.count(Comment.id).label("comment_count")
+            )
+            .join(Post.author)
+            .outerjoin(Post.comments)
+            .where(Post.published == True)
+            .group_by(Post.id, Post.title, User.full_name)
+            .order_by(desc(func.count(Comment.id)))
+            .limit(limit)
+        )
+
+        return [
+            {
+                "id": row.id,
+                "title": row.title,
+                "author_name": row.author_name,
+                "comment_count": row.comment_count
+            }
+            for row in result.all()
+        ]
+
+    async def create_post_with_tags(
+        self,
+        title: str,
+        content: str,
+        author_id: int,
+        tag_names: List[str]
+    ) -> Post:
+        """Create post and associate with tags (handles existing tags)."""
+        # Create post
+        post = Post(
+            title=title,
+            content=content,
+            author_id=author_id,
+            published=False
+        )
+        self.db.add(post)
+        await self.db.flush()  # Get post.id
+
+        # Get or create tags
+        for tag_name in tag_names:
+            # Check if tag exists
+            result = await self.db.execute(
+                select(Tag).where(Tag.name == tag_name)
+            )
+            tag = result.scalar_one_or_none()
+
+            if not tag:
+                tag = Tag(name=tag_name)
+                self.db.add(tag)
+                await self.db.flush()
+
+            post.tags.append(tag)
+
+        await self.db.commit()
+        await self.db.refresh(post)
+        return post
+
+    async def increment_view_count(self, post_id: int) -> None:
+        """Increment post view count (atomic update)."""
+        await self.db.execute(
+            update(Post)
+            .where(Post.id == post_id)
+            .values(view_count=Post.view_count + 1)
+        )
+        await self.db.commit()
+
+
+# routers/posts.py
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
+
+from app.database import get_db
+from app.repositories.post import PostRepository
+from app.schemas import PostCreate, PostResponse, PostWithDetails
+from app.dependencies import get_current_active_user
+
+router = APIRouter(prefix="/posts", tags=["posts"])
+
+
+@router.get("/", response_model=List[PostResponse])
+async def list_posts(
+    skip: int = 0,
+    limit: int = 20,
+    tag: str | None = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """List published posts with pagination."""
+    repo = PostRepository(db)
+    posts = await repo.get_published_posts(skip=skip, limit=limit, tag_name=tag)
+    return posts
+
+
+@router.get("/popular", response_model=List[dict])
+async def popular_posts(db: AsyncSession = Depends(get_db)):
+    """Get most popular posts by comment count."""
+    repo = PostRepository(db)
+    return await repo.get_popular_posts(limit=10)
+
+
+@router.get("/{post_id}", response_model=PostWithDetails)
+async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
+    """Get post with all details (author, tags, comments)."""
+    repo = PostRepository(db)
+
+    # Increment view count asynchronously
+    await repo.increment_view_count(post_id)
+
+    post = await repo.get_post_with_details(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    return post
+
+
+@router.post("/", response_model=PostResponse, status_code=201)
+async def create_post(
+    post_data: PostCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create new post with tags."""
+    repo = PostRepository(db)
+
+    post = await repo.create_post_with_tags(
+        title=post_data.title,
+        content=post_data.content,
+        author_id=current_user.id,
+        tag_names=post_data.tags
+    )
+
+    return post
+```
+
+**Key Features**:
+- ✅ Complex many-to-many relationships (posts <-> tags)
+- ✅ Optimized eager loading (avoids N+1 queries)
+- ✅ Aggregation queries (post popularity)
+- ✅ Atomic updates (view count increment)
+- ✅ Cascading deletes
+- ✅ Tag reuse (get or create pattern)
+
+---
+
+## 2025-Specific Patterns
+
+### 1. SQLAlchemy 2.0+ Mapped[] Type Annotations
+
+**Feature**: New type annotation system with `Mapped[]` for improved type safety and IDE support.
+
+```python
+# ✅ SQLAlchemy 2.0+ style (2023+)
+from sqlalchemy.orm import Mapped, mapped_column
+from typing import List, Optional
+
+class User(Base):
+    __tablename__ = "users"
+
+    # Required columns
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+
+    # Optional columns (use Union or | syntax)
+    full_name: Mapped[str | None] = mapped_column(String(100))
+    bio: Mapped[Optional[str]] = mapped_column(Text)  # Alternative syntax
+
+    # Relationships with proper types
+    posts: Mapped[List["Post"]] = relationship("Post", back_populates="author")
+    profile: Mapped["UserProfile"] = relationship("UserProfile", back_populates="user", uselist=False)
+
+
+# ❌ Old style (SQLAlchemy 1.x, deprecated in 2.0)
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True)
+    full_name = Column(String(100), nullable=True)
+
+    posts = relationship("Post", back_populates="author")
+```
+
+**Benefits**:
+- IDE autocomplete works perfectly
+- mypy/pyright type checking
+- Clear distinction between required and optional fields
+- Better documentation
+
+---
+
+### 2. AsyncIO with asyncpg/aiomysql Drivers
+
+**Feature**: Native async database drivers for PostgreSQL and MySQL (2022+).
+
+```python
+# ✅ asyncpg for PostgreSQL (fastest async driver, 2x faster than psycopg2)
+DATABASE_URL = "postgresql+asyncpg://user:pass@localhost/db"
+
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_size=20,
+    max_overflow=40,
+)
+
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+
+# ✅ aiomysql for MySQL
+DATABASE_URL = "mysql+aiomysql://user:pass@localhost/db"
+
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_recycle=3600,  # MySQL requires connection recycling
+)
+
+
+# Usage in FastAPI
+async def get_db() -> AsyncSession:
+    """Dependency for database session."""
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
+@router.get("/users/")
+async def get_users(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    return users
+```
+
+**Performance**: asyncpg is 2-3x faster than psycopg2 for async workloads.
+
+---
+
+### 3. SQLAlchemy 2.0 select() Syntax (No More query())
+
+**Feature**: New `select()` syntax replaces legacy `query()` API (mandatory in SQLAlchemy 2.0+).
+
+```python
+# ✅ New select() syntax (SQLAlchemy 2.0+)
+from sqlalchemy import select
+
+result = await db.execute(
+    select(User)
+    .where(User.is_active == True)
+    .order_by(User.created_at.desc())
+    .limit(10)
+)
+users = result.scalars().all()
+
+
+# With joins
+result = await db.execute(
+    select(Post)
+    .join(Post.author)
+    .where(User.is_active == True)
+    .options(joinedload(Post.author))
+)
+posts = result.unique().scalars().all()
+
+
+# ❌ Old query() syntax (SQLAlchemy 1.x, removed in 2.0)
+users = db.query(User)\
+    .filter(User.is_active == True)\
+    .order_by(User.created_at.desc())\
+    .limit(10)\
+    .all()
+```
+
+**Migration**: If upgrading from SQLAlchemy 1.x, replace all `db.query()` with `select()`.
+
+---
+
+### 4. Alembic Async Support with run_sync()
+
+**Feature**: Alembic migrations now support async engines properly (2022+).
+
+```python
+# alembic/env.py
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
+from alembic import context
+
+from app.database import Base
+from app.models import *  # Import all models
+
+
+async def run_async_migrations() -> None:
+    """Run migrations with async engine."""
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)  # Run sync function in async context
+
+    await connectable.dispose()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    """Actual migration execution (runs synchronously)."""
+    context.configure(connection=connection, target_metadata=Base.metadata)
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Entry point for 'online' migrations."""
+    import asyncio
+    asyncio.run(run_async_migrations())
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+```
+
+**Key Point**: Use `run_sync()` to execute synchronous Alembic operations in async context.
+
+---
+
+### 5. Hybrid Properties for Computed Fields
+
+**Feature**: Create Python properties that work in both Python and SQL (SQLAlchemy 1.2+, enhanced in 2.0).
+
+```python
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy import func, select
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    price: Mapped[float] = mapped_column(nullable=False)
+    discount_percent: Mapped[float] = mapped_column(default=0.0)
+    stock: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Hybrid property (works in Python AND SQL!)
+    @hybrid_property
+    def final_price(self) -> float:
+        """Calculated price after discount (Python)."""
+        return self.price * (1 - self.discount_percent / 100)
+
+    @final_price.expression
+    def final_price(cls):
+        """Calculated price after discount (SQL expression)."""
+        return cls.price * (1 - cls.discount_percent / 100)
+
+    @hybrid_property
+    def is_in_stock(self) -> bool:
+        """Check if product is in stock (Python)."""
+        return self.stock > 0
+
+    @is_in_stock.expression
+    def is_in_stock(cls):
+        """Check if product is in stock (SQL expression)."""
+        return cls.stock > 0
+
+
+# Usage in Python
+product = await db.get(Product, 1)
+print(product.final_price)  # Calculated in Python
+
+
+# Usage in SQL queries (filter/order by computed field!)
+result = await db.execute(
+    select(Product)
+    .where(Product.is_in_stock == True)  # Uses SQL expression!
+    .where(Product.final_price < 100.0)
+    .order_by(Product.final_price.desc())
+)
+products = result.scalars().all()
+```
+
+**Benefits**: Compute fields once in model definition, use in both Python and SQL queries.
+
+---
+
+### 6. Connection Pooling with pool_pre_ping for Reliability
+
+**Feature**: Verify connections before use to prevent "server has gone away" errors (SQLAlchemy 1.2+, recommended in 2.0).
+
+```python
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool, QueuePool
+
+# ✅ Production: pool_pre_ping verifies connections
+engine = create_async_engine(
+    "postgresql+asyncpg://user:pass@localhost/db",
+    pool_pre_ping=True,          # Test connection before using
+    pool_size=20,                 # Connection pool size
+    max_overflow=40,              # Max connections beyond pool_size
+    pool_timeout=30,              # Timeout waiting for connection
+    pool_recycle=3600,            # Recycle connections after 1 hour
+    echo=False,                   # Disable SQL logging in production
+)
+
+
+# ✅ Serverless: NullPool (no connection pooling)
+engine = create_async_engine(
+    "postgresql+asyncpg://user:pass@localhost/db",
+    poolclass=NullPool,  # Create new connection per request
+)
+
+
+# ✅ Monitor pool status
+from sqlalchemy import event
+
+@event.listens_for(engine.sync_engine, "connect")
+def receive_connect(dbapi_conn, connection_record):
+    """Log new connections."""
+    print(f"New DB connection: {dbapi_conn}")
+
+@event.listens_for(engine.sync_engine, "checkout")
+def receive_checkout(dbapi_conn, connection_record, connection_proxy):
+    """Log connection checkout from pool."""
+    print(f"Connection checked out from pool")
+```
+
+**Benefits**: Prevents "MySQL server has gone away" and similar timeout errors. Essential for long-running applications.
+
+---
+
 ## References
 
 - [SQLAlchemy 2.0 Documentation](https://docs.sqlalchemy.org/en/20/)
