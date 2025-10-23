@@ -589,5 +589,13 @@ def analyzer_factory():
 @pytest.fixture
 def detector():
     """Fixture providing detect_tech_stack function."""
-    from skills.project_analyzer.detect_stack import detect_tech_stack
+    import sys
+    from pathlib import Path
+
+    # Add skills directory to Python path
+    skills_dir = Path(__file__).parent.parent / "skills" / "project-analyzer"
+    if str(skills_dir) not in sys.path:
+        sys.path.insert(0, str(skills_dir))
+
+    from detect_stack import detect_tech_stack
     return detect_tech_stack
