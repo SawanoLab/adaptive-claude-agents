@@ -104,6 +104,85 @@ Confidence: 98%
 Tools: Vitest, Testing Library, Tailwind CSS
 ```
 
+### 4. Update Existing Subagents
+
+**Command**:
+```bash
+python3 "$SKILLS_DIR/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --[MODE] --auto
+```
+
+**When to use**:
+- User asks: "サブエージェントを更新して" / "Update my subagents"
+- User mentions: "最新のテンプレートに更新" / "Update to latest templates"
+- After framework update (e.g., `bash update.sh`)
+- User asks: "新しいテンプレートがあるか確認して" / "Check for new templates"
+
+**Available Modes**:
+
+1. **`--update-only`** (RECOMMENDED - Safest)
+   - Updates only existing `.claude/agents/*.md` files
+   - Preserves file list (no new files added)
+   - ⚠️ Overwrites customizations
+   - No backup created
+   - **Use when**: User hasn't customized agents
+
+2. **`--merge`** (SAFE - Preserves customizations)
+   - Adds new templates from latest version
+   - Preserves existing files (no changes)
+   - ✅ Customizations protected
+   - Creates backup: `.claude/agents.backup.YYYYMMDD-HHMMSS/`
+   - **Use when**: User has customized agents and wants new templates
+
+3. **`--force`** (DESTRUCTIVE - Complete regeneration)
+   - Regenerates all files from templates
+   - ❌ Customizations lost
+   - Creates backup
+   - **Use when**: User explicitly requests complete refresh
+
+**Interactive Workflow**:
+
+When user asks to update subagents:
+
+1. **Check for existing agents**:
+   ```bash
+   ls .claude/agents/*.md 2>/dev/null
+   ```
+
+2. **Ask user which mode**:
+   ```
+   I found existing subagents in .claude/agents/. Which update mode would you like?
+
+   1. --update-only (Recommended): Update existing files to latest versions
+      ⚠️  Your customizations will be overwritten
+      ✅ Safest for non-customized projects
+
+   2. --merge: Add new templates, preserve your existing customizations
+      ✅ Your changes are safe
+      ✅ Gets new templates
+      ⚠️  Existing files won't get template improvements
+
+   3. --force: Complete regeneration (creates backup first)
+      ❌ Customizations lost
+      ✅ Fresh start with latest templates
+   ```
+
+3. **Execute with chosen mode**:
+   ```bash
+   python3 "$SKILLS_DIR/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --[MODE] --auto
+   ```
+
+4. **Report results**:
+   ```
+   📊 Update Summary:
+   • Updated: 3 existing agent(s)
+   • Preserved: 1 customized agent(s)
+   • Backup: .claude/agents.backup.20251024-073851/
+   ```
+
+**Default recommendation**: If user doesn't specify, suggest `--merge` as the safest option.
+
+**Slash command shortcut**: User can also use `/update-subagents`
+
 ---
 
 ## Supported Frameworks

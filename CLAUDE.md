@@ -235,6 +235,59 @@ Chrome DevToolsで進めます..."
 - **iOS Swift**: SwiftUI + UIKitハイブリッド
 - **React State**: Zustand推奨
 
+---
+
+## サブエージェント更新ワークフロー
+
+**トリガーキーワード**: ユーザーが以下のいずれかを言及した場合、サブエージェント更新機能を提供してください
+
+### 日本語キーワード
+- "サブエージェントを更新"
+- "テンプレートを更新"
+- "エージェントを最新に"
+- "新しいテンプレートがあるか確認"
+- ".claude/agents を更新"
+
+### 英語キーワード
+- "update subagents"
+- "update templates"
+- "refresh agents"
+- "check for new templates"
+- "update .claude/agents"
+
+### 自動ワークフロー
+
+```
+ユーザー: "サブエージェントを更新して"
+
+Claude（自動実行）:
+  1. 既存エージェントの確認:
+     ls .claude/agents/*.md 2>/dev/null | grep -v SUBAGENT_GUIDE.md
+
+  2. 3つのモードを提示:
+     - --update-only: 既存ファイルを更新（推奨）
+     - --merge: 新規追加・既存保護（カスタマイズあり時）
+     - --force: 完全再生成（バックアップ付き）
+
+  3. ユーザーの選択を待つ
+
+  4. 選択されたモードで実行:
+     python3 "$SKILLS_DIR/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --[MODE] --auto
+
+  5. 結果をレポート:
+     - 更新されたファイル数
+     - 保護されたファイル数
+     - バックアップの場所（作成された場合）
+```
+
+**重要**: ユーザーがモードを指定しない場合、以下のデフォルトを推奨:
+- カスタマイズ検出なし → `--update-only`
+- カスタマイズ検出あり → `--merge`
+
+**スラッシュコマンド**: `/update-subagents` も使用可能
+
+---
+
 ## 質問がある場合
 
 各ドキュメントを参照してください：
