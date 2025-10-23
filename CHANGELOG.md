@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - Smart Cache Invalidation (Week 2, 2025-10-23) 🎯
+Nothing yet.
+
+## [0.7.0-beta] - 2025-10-23
+
+### Added - Smart Cache Invalidation (Week 2) 🎯
 
 **Achievement**: **86% reduction in false cache invalidation** (15-20% → < 5%), **cache hit rate improved +5-8%**
 
@@ -70,23 +74,6 @@ python3 detect_stack.py .
 - Test development (tests/*.py): Cache maintained ✅
 - CI/CD configuration (.github/workflows/*.yml): Cache maintained ✅
 - Only actual project files invalidate cache (package.json, go.mod, etc.)
-
-### Changed - Smart Cache Invalidation
-- **Detection methods**: All 11 frameworks now use file tracking helpers
-- **Cache key generation**: Uses `used_files` list instead of all 21 indicator files
-- **Backward compatibility**: Old cache entries (without `used_files`) still work with fallback
-
-### Fixed - Smart Cache Invalidation
-- **PHP detection bug**: Fixed `NameError: name 'composer_file' is not defined`
-  - Replaced old variable references with new tracking variables
-  - All tests passing (213/213) ✅
-
-### Improved - Smart Cache Invalidation
-- **Developer experience**: Fewer false invalidations = faster workflows
-- **Cache accuracy**: Only relevant file changes trigger re-detection
-- **Maintainability**: Consistent pattern across all 11 frameworks
-
-## [0.7.0-beta] - 2025-10-23
 
 ### Added - Performance & Caching System 🚀
 
