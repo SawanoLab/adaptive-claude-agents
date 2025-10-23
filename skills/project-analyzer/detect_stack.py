@@ -597,8 +597,9 @@ class TechStackDetector:
         Returns:
             DetectionResult if Go project detected, None otherwise
         """
-        go_mod = self.project_path / "go.mod"
-        if not go_mod.exists():
+        # Use tracking helper
+        go_mod_content = self._read_file("go.mod")
+        if not go_mod_content:
             return None
 
         confidence = 0.7
@@ -610,92 +611,85 @@ class TechStackDetector:
         framework = "go"
         framework_detected = False
 
-        try:
-            with open(go_mod, 'r', encoding='utf-8') as f:
-                content = f.read()
+        # Framework detection
+        if 'gin-gonic/gin' in go_mod_content:
+            framework = "go-gin"
+            indicators.append("Gin framework: +0.15")
+            confidence += 0.15
+            framework_detected = True
+            tools['web-framework'] = ['gin']
+        elif 'labstack/echo' in go_mod_content:
+            framework = "go-echo"
+            indicators.append("Echo framework: +0.15")
+            confidence += 0.15
+            framework_detected = True
+            tools['web-framework'] = ['echo']
+        elif 'gofiber/fiber' in go_mod_content:
+            framework = "go-fiber"
+            indicators.append("Fiber framework: +0.15")
+            confidence += 0.15
+            framework_detected = True
+            tools['web-framework'] = ['fiber']
+        elif 'go-chi/chi' in go_mod_content:
+            framework = "go-chi"
+            indicators.append("Chi router: +0.15")
+            confidence += 0.15
+            framework_detected = True
+            tools['web-framework'] = ['chi']
+        elif 'gorilla/mux' in go_mod_content:
+            framework = "go-gorilla"
+            indicators.append("Gorilla Mux router: +0.15")
+            confidence += 0.15
+            framework_detected = True
+            tools['web-framework'] = ['gorilla-mux']
 
-                # Framework detection
-                if 'gin-gonic/gin' in content:
-                    framework = "go-gin"
-                    indicators.append("Gin framework: +0.15")
-                    confidence += 0.15
-                    framework_detected = True
-                    tools['web-framework'] = ['gin']
-                elif 'labstack/echo' in content:
-                    framework = "go-echo"
-                    indicators.append("Echo framework: +0.15")
-                    confidence += 0.15
-                    framework_detected = True
-                    tools['web-framework'] = ['echo']
-                elif 'gofiber/fiber' in content:
-                    framework = "go-fiber"
-                    indicators.append("Fiber framework: +0.15")
-                    confidence += 0.15
-                    framework_detected = True
-                    tools['web-framework'] = ['fiber']
-                elif 'go-chi/chi' in content:
-                    framework = "go-chi"
-                    indicators.append("Chi router: +0.15")
-                    confidence += 0.15
-                    framework_detected = True
-                    tools['web-framework'] = ['chi']
-                elif 'gorilla/mux' in content:
-                    framework = "go-gorilla"
-                    indicators.append("Gorilla Mux router: +0.15")
-                    confidence += 0.15
-                    framework_detected = True
-                    tools['web-framework'] = ['gorilla-mux']
+        # Go version detection
+        import re
+        go_version_match = re.search(r'go (\d+\.\d+)', go_mod_content)
+        if go_version_match:
+            version = go_version_match.group(1)
 
-                # Go version detection
-                import re
-                go_version_match = re.search(r'go (\d+\.\d+)', content)
-                if go_version_match:
-                    version = go_version_match.group(1)
+        # ORM/Database libraries
+        if 'gorm.io/gorm' in go_mod_content:
+            tools.setdefault('orm', []).append('gorm')
+            indicators.append("GORM ORM: +0.05")
+            confidence += 0.05
+        elif 'ent' in go_mod_content or 'entgo.io' in go_mod_content:
+            tools.setdefault('orm', []).append('ent')
+            indicators.append("Ent ORM: +0.05")
+            confidence += 0.05
 
-                # ORM/Database libraries
-                if 'gorm.io/gorm' in content:
-                    tools.setdefault('orm', []).append('gorm')
-                    indicators.append("GORM ORM: +0.05")
-                    confidence += 0.05
-                elif 'ent' in content or 'entgo.io' in content:
-                    tools.setdefault('orm', []).append('ent')
-                    indicators.append("Ent ORM: +0.05")
-                    confidence += 0.05
+        # Database drivers
+        if 'lib/pq' in go_mod_content or 'gorm.io/driver/postgres' in go_mod_content:
+            tools.setdefault('database', []).append('postgresql')
+        elif 'go-sql-driver/mysql' in go_mod_content or 'gorm.io/driver/mysql' in go_mod_content:
+            tools.setdefault('database', []).append('mysql')
+        elif 'mattn/go-sqlite3' in go_mod_content or 'gorm.io/driver/sqlite' in go_mod_content:
+            tools.setdefault('database', []).append('sqlite')
+        elif 'go.mongodb.org/mongo-driver' in go_mod_content:
+            tools.setdefault('database', []).append('mongodb')
 
-                # Database drivers
-                if 'lib/pq' in content or 'gorm.io/driver/postgres' in content:
-                    tools.setdefault('database', []).append('postgresql')
-                elif 'go-sql-driver/mysql' in content or 'gorm.io/driver/mysql' in content:
-                    tools.setdefault('database', []).append('mysql')
-                elif 'mattn/go-sqlite3' in content or 'gorm.io/driver/sqlite' in content:
-                    tools.setdefault('database', []).append('sqlite')
-                elif 'go.mongodb.org/mongo-driver' in content:
-                    tools.setdefault('database', []).append('mongodb')
+        # Testing frameworks
+        if 'testify' in go_mod_content or 'stretchr/testify' in go_mod_content:
+            tools.setdefault('testing', []).append('testify')
+        if 'ginkgo' in go_mod_content:
+            tools.setdefault('testing', []).append('ginkgo')
+        if 'goconvey' in go_mod_content:
+            tools.setdefault('testing', []).append('goconvey')
 
-                # Testing frameworks
-                if 'testify' in content or 'stretchr/testify' in content:
-                    tools.setdefault('testing', []).append('testify')
-                if 'ginkgo' in content:
-                    tools.setdefault('testing', []).append('ginkgo')
-                if 'goconvey' in content:
-                    tools.setdefault('testing', []).append('goconvey')
+        # API/HTTP clients
+        if 'go-resty/resty' in go_mod_content:
+            tools.setdefault('http-client', []).append('resty')
 
-                # API/HTTP clients
-                if 'go-resty/resty' in content:
-                    tools.setdefault('http-client', []).append('resty')
+        # Logging
+        if 'sirupsen/logrus' in go_mod_content:
+            tools.setdefault('logging', []).append('logrus')
+        elif 'uber-go/zap' in go_mod_content:
+            tools.setdefault('logging', []).append('zap')
 
-                # Logging
-                if 'sirupsen/logrus' in content:
-                    tools.setdefault('logging', []).append('logrus')
-                elif 'uber-go/zap' in content:
-                    tools.setdefault('logging', []).append('zap')
-
-                # Config management
-                if 'spf13/viper' in content:
-                    tools.setdefault('config', []).append('viper')
-
-        except UnicodeDecodeError:
-            pass
+        # Config management
+        if 'spf13/viper' in go_mod_content:
+            tools.setdefault('config', []).append('viper')
 
         # Check for Go source files with common patterns
         go_files = list(self.project_path.glob("*.go"))
@@ -728,8 +722,8 @@ class TechStackDetector:
             except (UnicodeDecodeError, PermissionError):
                 continue
 
-        # Check for Dockerfile (common in Go projects)
-        if (self.project_path / "Dockerfile").exists():
+        # Check for Dockerfile (common in Go projects) with tracking
+        if self._check_file("Dockerfile"):
             tools.setdefault('containerization', []).append('docker')
             confidence += 0.05
             indicators.append("Dockerfile: +0.05")
@@ -757,13 +751,13 @@ class TechStackDetector:
             elif 'mongodb' in tools['database']:
                 recommended_subagents.append('mongodb-specialist')
 
-        # Project structure
+        # Project structure (with tracking)
         project_structure = {
             'has_go_mod': True,
-            'has_cmd_dir': (self.project_path / 'cmd').exists(),
-            'has_internal_dir': (self.project_path / 'internal').exists(),
-            'has_pkg_dir': (self.project_path / 'pkg').exists(),
-            'has_dockerfile': (self.project_path / 'Dockerfile').exists(),
+            'has_cmd_dir': self._check_dir('cmd'),
+            'has_internal_dir': self._check_dir('internal'),
+            'has_pkg_dir': self._check_dir('pkg'),
+            'has_dockerfile': self._check_file('Dockerfile'),
             'framework': framework
         }
 
@@ -792,8 +786,9 @@ class TechStackDetector:
         Returns:
             DetectionResult if Flutter project detected, None otherwise
         """
-        pubspec = self.project_path / "pubspec.yaml"
-        if not pubspec.exists():
+        # Use tracking helper
+        pubspec_content = self._read_file("pubspec.yaml")
+        if not pubspec_content:
             return None
 
         confidence = 0.0
@@ -804,8 +799,7 @@ class TechStackDetector:
         # Parse pubspec.yaml
         try:
             import yaml
-            with open(pubspec, 'r', encoding='utf-8') as f:
-                pubspec_data = yaml.safe_load(f)
+            pubspec_data = yaml.safe_load(pubspec_content)
 
             if not pubspec_data:
                 return None
@@ -877,22 +871,17 @@ class TechStackDetector:
 
         except (yaml.YAMLError, ImportError) as e:
             # If YAML parsing fails or yaml module not available, use basic detection
-            try:
-                with open(pubspec, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    if 'flutter:' in content or 'sdk: flutter' in content:
-                        confidence += 0.6
-                        indicators.append("pubspec.yaml with flutter reference: +0.6")
-                    else:
-                        return None
-            except UnicodeDecodeError:
+            if 'flutter:' in pubspec_content or 'sdk: flutter' in pubspec_content:
+                confidence += 0.6
+                indicators.append("pubspec.yaml with flutter reference: +0.6")
+            else:
                 return None
 
-        # Check for Flutter project structure
-        has_lib = (self.project_path / 'lib').is_dir()
-        has_android = (self.project_path / 'android').is_dir()
-        has_ios = (self.project_path / 'ios').is_dir()
-        has_test = (self.project_path / 'test').is_dir()
+        # Check for Flutter project structure (with tracking)
+        has_lib = self._check_dir('lib')
+        has_android = self._check_dir('android')
+        has_ios = self._check_dir('ios')
+        has_test = self._check_dir('test')
 
         if has_lib:
             confidence += 0.15
@@ -904,26 +893,20 @@ class TechStackDetector:
             confidence += 0.05
             indicators.append("platform directory exists: +0.05")
 
-        # Check for main.dart
-        main_dart = self.project_path / 'lib' / 'main.dart'
-        if main_dart.exists():
+        # Check for main.dart (with tracking)
+        main_dart_content = self._read_file('lib/main.dart')
+        if main_dart_content:
             confidence += 0.1
             indicators.append("lib/main.dart exists: +0.1")
 
             # Check for Flutter widgets in main.dart
-            try:
-                with open(main_dart, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    flutter_patterns = ['import \'package:flutter', 'MaterialApp', 'StatelessWidget', 'StatefulWidget', 'runApp']
+            flutter_patterns = ['import \'package:flutter', 'MaterialApp', 'StatelessWidget', 'StatefulWidget', 'runApp']
 
-                    for pattern in flutter_patterns:
-                        if pattern in content:
-                            confidence += 0.02
-                            indicators.append(f"Flutter pattern '{pattern}' in main.dart: +0.02")
-                            break
-
-            except (UnicodeDecodeError, PermissionError):
-                pass
+            for pattern in flutter_patterns:
+                if pattern in main_dart_content:
+                    confidence += 0.02
+                    indicators.append(f"Flutter pattern '{pattern}' in main.dart: +0.02")
+                    break
 
         # Check for Dart files with Flutter imports
         dart_files = list(self.project_path.glob("lib/**/*.dart"))
@@ -973,7 +956,7 @@ class TechStackDetector:
             'has_android': has_android,
             'has_ios': has_ios,
             'has_test': has_test,
-            'has_main_dart': main_dart.exists(),
+            'has_main_dart': main_dart_content is not None,
             'dart_files_count': len(dart_files)
         }
 
@@ -1012,9 +995,9 @@ class TechStackDetector:
         version = None
         language = "php"
         
-        # Check for composer.json
-        composer_file = self.project_path / "composer.json"
-        if not composer_file.exists():
+        # Check for composer.json (with tracking)
+        composer_content = self._read_file("composer.json")
+        if not composer_content:
             # No composer - check for raw PHP files
             root_php_files = list(self.project_path.glob("*.php"))
             if len(root_php_files) >= 3:
@@ -1026,9 +1009,9 @@ class TechStackDetector:
         else:
             indicators.append("composer.json exists: +0.1")
             confidence += 0.1
-            
+
             try:
-                composer_data = json.load(open(composer_file))
+                composer_data = json.loads(composer_content)
                 requires = composer_data.get('require', {})
                 
                 # NEGATIVE CHECK: Major frameworks (immediately disqualify)
@@ -1079,7 +1062,7 @@ class TechStackDetector:
             # Lowered threshold: even 2 PHP files can indicate a simple PHP project
             indicators.append(f"{num_root_php} root-level PHP files: +0.1")
             confidence += 0.1
-        elif num_root_php >= 1 and composer_file.exists():
+        elif num_root_php >= 1 and composer_content:
             # If has composer.json + at least 1 PHP file, likely a PHP project
             indicators.append(f"{num_root_php} PHP file with composer.json: +0.05")
             confidence += 0.05
@@ -1087,22 +1070,18 @@ class TechStackDetector:
             # Too few PHP files
             return None
         
-        # Check for index.php with routing logic
-        index_php = self.project_path / "index.php"
-        if index_php.exists():
-            try:
-                content = index_php.read_text(encoding='utf-8', errors='ignore')
-                routing_indicators = ['FastRoute', 'Dispatcher', 'REQUEST_URI', '$_SERVER', 'routes']
-                
-                found_routing = [r for r in routing_indicators if r in content]
-                if found_routing:
-                    indicators.append(f"index.php with custom routing ({', '.join(found_routing)}): +0.15")
-                    confidence += 0.15
-                else:
-                    indicators.append("index.php exists: +0.05")
-                    confidence += 0.05
-            except IOError:
-                pass
+        # Check for index.php with routing logic (with tracking)
+        index_php_content = self._read_file("index.php")
+        if index_php_content:
+            routing_indicators = ['FastRoute', 'Dispatcher', 'REQUEST_URI', '$_SERVER', 'routes']
+
+            found_routing = [r for r in routing_indicators if r in index_php_content]
+            if found_routing:
+                indicators.append(f"index.php with custom routing ({', '.join(found_routing)}): +0.15")
+                confidence += 0.15
+            else:
+                indicators.append("index.php exists: +0.05")
+                confidence += 0.05
         
         # Check for custom MVC structure
         mvc_structures = [
@@ -1130,16 +1109,12 @@ class TechStackDetector:
                     confidence += 0.05
                     break
         
-        # Check for .htaccess with custom rules
-        htaccess = self.project_path / ".htaccess"
-        if htaccess.exists():
-            try:
-                content = htaccess.read_text(encoding='utf-8', errors='ignore')
-                if 'RewriteEngine' in content and 'index.php' in content:
-                    indicators.append(".htaccess with custom rewrite rules: +0.05")
-                    confidence += 0.05
-            except IOError:
-                pass
+        # Check for .htaccess with custom rules (with tracking)
+        htaccess_content = self._read_file(".htaccess")
+        if htaccess_content:
+            if 'RewriteEngine' in htaccess_content and 'index.php' in htaccess_content:
+                indicators.append(".htaccess with custom rewrite rules: +0.05")
+                confidence += 0.05
         
         # Check for custom bootstrap.php
         for bootstrap_file in self.project_path.rglob("bootstrap.php"):
@@ -1153,40 +1128,33 @@ class TechStackDetector:
                 except IOError:
                     pass
         
-        # Detect language (PHP vs PHP + TypeScript)
-        if (self.project_path / "tsconfig.json").exists():
+        # Detect language (PHP vs PHP + TypeScript) (with tracking)
+        if self._check_file("tsconfig.json"):
             language = "php-typescript"
         elif list(self.project_path.glob("**/*.ts")):
             language = "php-typescript"
-        
-        # Testing frameworks detection
+
+        # Testing frameworks detection (with tracking)
         testing_frameworks = []
-        
+
         # Playwright
-        if (self.project_path / "playwright.config.js").exists() or \
-           (self.project_path / "playwright.config.ts").exists():
+        if self._check_file("playwright.config.js") or self._check_file("playwright.config.ts"):
             testing_frameworks.append("playwright")
             indicators.append("Playwright E2E testing: +0.05")
             confidence += 0.05
-        
+
         # Codeception
-        if (self.project_path / "codeception.yml").exists():
+        if self._check_file("codeception.yml"):
             testing_frameworks.append("codeception")
             indicators.append("Codeception testing: +0.05")
             confidence += 0.05
-        
+
         # PHPUnit
-        phpunit_configs = [
-            self.project_path / "phpunit.xml",
-            self.project_path / "phpunit.xml.dist"
-        ]
-        for phpunit_config in phpunit_configs:
-            if phpunit_config.exists():
-                testing_frameworks.append("phpunit")
-                indicators.append("PHPUnit testing: +0.05")
-                confidence += 0.05
-                break
-        
+        if self._check_file("phpunit.xml") or self._check_file("phpunit.xml.dist"):
+            testing_frameworks.append("phpunit")
+            indicators.append("PHPUnit testing: +0.05")
+            confidence += 0.05
+
         if testing_frameworks:
             tools['testing'] = testing_frameworks
         
@@ -1257,9 +1225,9 @@ class TechStackDetector:
         
         # Project structure information
         project_structure = {
-            'has_composer': composer_file.exists(),
+            'has_composer': composer_content is not None,
             'has_mvc_structure': any((mvc_dir.exists() for mvc_dir in mvc_structures)),
-            'has_htaccess': htaccess.exists(),
+            'has_htaccess': htaccess_content is not None,
             'has_docker': 'docker' in tools.get('containerization', []),
             'root_php_files': num_root_php
         }
@@ -1288,11 +1256,11 @@ class TechStackDetector:
         Returns:
             DetectionResult if Python ML project detected, None otherwise
         """
-        # Check for Python project files
-        has_requirements = (self.project_path / "requirements.txt").exists()
-        has_pyproject = (self.project_path / "pyproject.toml").exists()
-        has_conda_env = (self.project_path / "environment.yml").exists()
-        
+        # Check for Python project files (with tracking)
+        has_requirements = self._check_file("requirements.txt")
+        has_pyproject = self._check_file("pyproject.toml")
+        has_conda_env = self._check_file("environment.yml")
+
         if not (has_requirements or has_pyproject or has_conda_env):
             return None
 
@@ -1312,35 +1280,27 @@ class TechStackDetector:
         
         detected_categories = {cat: [] for cat in ml_libraries.keys()}
         
-        # Check requirements.txt
-        requirements_file = self.project_path / "requirements.txt"
-        if requirements_file.exists():
-            try:
-                with open(requirements_file, 'r', encoding='utf-8') as f:
-                    requirements = f.read().lower()
-                    
-                    for category, libs in ml_libraries.items():
-                        for lib in libs:
-                            if lib in requirements:
-                                detected_categories[category].append(lib)
-                                
-            except UnicodeDecodeError:
-                pass
-        
-        # Check environment.yml
-        env_file = self.project_path / "environment.yml"
-        if env_file.exists():
-            try:
-                with open(env_file, 'r', encoding='utf-8') as f:
-                    env_content = f.read().lower()
-                    
-                    for category, libs in ml_libraries.items():
-                        for lib in libs:
-                            if lib in env_content:
-                                detected_categories[category].append(lib)
-                                
-            except UnicodeDecodeError:
-                pass
+        # Check requirements.txt (with tracking)
+        if has_requirements:
+            requirements_content = self._read_file("requirements.txt")
+            if requirements_content:
+                requirements = requirements_content.lower()
+
+                for category, libs in ml_libraries.items():
+                    for lib in libs:
+                        if lib in requirements:
+                            detected_categories[category].append(lib)
+
+        # Check environment.yml (with tracking)
+        if has_conda_env:
+            env_content = self._read_file("environment.yml")
+            if env_content:
+                env_lower = env_content.lower()
+
+                for category, libs in ml_libraries.items():
+                    for lib in libs:
+                        if lib in env_lower:
+                            detected_categories[category].append(lib)
         
         # Calculate confidence based on detected libraries
         if detected_categories['general']:
@@ -1419,51 +1379,44 @@ class TechStackDetector:
             except (UnicodeDecodeError, PermissionError):
                 continue
         
-        # Check for common ML project directories
-        ml_directories = {
-            'data': self.project_path / 'data',
-            'datasets': self.project_path / 'datasets',
-            'models': self.project_path / 'models',
-            'notebooks': self.project_path / 'notebooks',
-            'experiments': self.project_path / 'experiments',
-            'checkpoints': self.project_path / 'checkpoints'
-        }
-        
-        found_dirs = [name for name, path in ml_directories.items() if path.exists()]
+        # Check for common ML project directories (with tracking)
+        ml_directories = ['data', 'datasets', 'models', 'notebooks', 'experiments', 'checkpoints']
+
+        found_dirs = [name for name in ml_directories if self._check_dir(name)]
         if found_dirs:
             confidence += 0.1
             indicators.append(f"ML project directories: {', '.join(found_dirs)}: +0.1")
-        
+
         # Minimum confidence threshold
         if confidence < 0.3:
             return None
-        
+
         # Determine recommended subagents
         recommended_subagents = ['python-ml-developer']
-        
+
         if 'jupyter' in tools.get('ml-tools', []):
             recommended_subagents.append('notebook-specialist')
-        
+
         if tools.get('deep-learning'):
             if 'torch' in tools['deep-learning'] or 'pytorch' in tools['deep-learning']:
                 recommended_subagents.append('pytorch-specialist')
             if 'tensorflow' in tools['deep-learning']:
                 recommended_subagents.append('tensorflow-specialist')
-        
+
         if tools.get('computer-vision'):
             recommended_subagents.append('cv-specialist')
-        
+
         if tools.get('nlp'):
             recommended_subagents.append('nlp-specialist')
-        
+
         if 'pandas' in tools.get('ml-general', []):
             recommended_subagents.append('data-analyst')
-        
+
         # Project structure
         project_structure = {
             'has_notebooks': num_notebooks > 0,
-            'has_data_dir': (self.project_path / 'data').exists(),
-            'has_models_dir': (self.project_path / 'models').exists(),
+            'has_data_dir': self._check_dir('data'),
+            'has_models_dir': self._check_dir('models'),
             'has_conda_env': has_conda_env,
             'ml_type': ml_type
         }
@@ -1552,14 +1505,14 @@ class TechStackDetector:
             tools['ui-framework'] = ['uikit']
             indicators.append(f"UIKit detected in {uikit_count} files")
         
-        # Check for CocoaPods
-        if (self.project_path / "Podfile").exists():
+        # Check for CocoaPods (with tracking)
+        if self._check_file("Podfile"):
             tools['dependency-manager'] = ['cocoapods']
             confidence += 0.05
             indicators.append("CocoaPods (Podfile): +0.05")
-        
-        # Check for Swift Package Manager
-        if (self.project_path / "Package.swift").exists():
+
+        # Check for Swift Package Manager (with tracking)
+        if self._check_file("Package.swift"):
             tools.setdefault('dependency-manager', []).append('spm')
             confidence += 0.05
             indicators.append("Swift Package Manager: +0.05")
