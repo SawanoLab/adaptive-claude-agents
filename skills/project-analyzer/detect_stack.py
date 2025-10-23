@@ -1598,22 +1598,112 @@ def detect_tech_stack(project_path: str) -> Optional[DetectionResult]:
         return None
 
 
-if __name__ == "__main__":
+def create_cli_parser():
+    """Create argument parser for CLI."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog='detect_stack',
+        description='Detect tech stack and framework for a project',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  %(prog)s .                      # Detect current directory
+  %(prog)s /path/to/project       # Detect specific project
+  %(prog)s . --verbose            # Verbose output with detection details
+  %(prog)s . --json               # JSON output for CI/CD
+  %(prog)s . --quiet              # Quiet mode (errors only)
+
+Supported Frameworks:
+  - Next.js, React, Vue.js
+  - FastAPI, Django, Flask
+  - Go (Gin, Echo, Fiber)
+  - Flutter, iOS Swift
+  - Vanilla PHP Web
+  - Python ML/CV
+
+For more information: https://github.com/SawanoLab/adaptive-claude-agents
+        '''
+    )
+
+    parser.add_argument(
+        'project_path',
+        nargs='?',
+        default='.',
+        help='Path to project directory (default: current directory)'
+    )
+
+    parser.add_argument(
+        '--version',
+        action='version',
+        version='%(prog)s 0.6.0-beta (Adaptive Claude Agents)'
+    )
+
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Verbose output with detailed detection process'
+    )
+
+    parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output results in JSON format'
+    )
+
+    parser.add_argument(
+        '--quiet', '-q',
+        action='store_true',
+        help='Quiet mode (only show errors)'
+    )
+
+    return parser
+
+
+def main():
+    """Main CLI entry point with argparse support."""
     import sys
+    import json
 
-    if len(sys.argv) < 2:
-        print("Usage: python detect_stack.py <project_path>")
-        sys.exit(1)
+    parser = create_cli_parser()
+    args = parser.parse_args()
 
-    project_path = sys.argv[1]
-    result = detect_tech_stack(project_path)
+    # Configure logging based on flags
+    if args.quiet:
+        logging.basicConfig(level=logging.ERROR, format='%(message)s')
+    elif args.verbose:
+        logging.basicConfig(level=logging.DEBUG, format='%(levelname)s - %(message)s')
+        logger.info(f"Starting tech stack detection for: {args.project_path}")
+    else:
+        logging.basicConfig(level=logging.WARNING, format='%(message)s')
+
+    # Detect tech stack
+    result = detect_tech_stack(args.project_path)
 
     if result:
-        print("\n" + "=" * 60)
-        print("Tech Stack Detection Result")
-        print("=" * 60)
-        print(result.to_json())
-        print("=" * 60)
+        if args.json:
+            # JSON output mode
+            print(result.to_json())
+        elif not args.quiet:
+            # Human-readable output
+            print("\n" + "=" * 60)
+            print("Tech Stack Detection Result")
+            print("=" * 60)
+            print(result.to_json())
+            print("=" * 60)
+
+            if args.verbose:
+                logger.info(f"Detected: {result.framework} with {result.confidence*100:.1f}% confidence")
+                logger.info(f"Recommended subagents: {', '.join(result.recommended_subagents)}")
+
+        sys.exit(0)
     else:
-        print("❌ Could not detect tech stack")
+        if not args.quiet:
+            logger.warning("Could not confidently detect tech stack")
+            if args.verbose:
+                logger.debug("Try running with --verbose to see detection attempts")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
