@@ -8,8 +8,18 @@ This script:
 3. Generates appropriate subagents from templates
 
 Usage:
+    # Initial generation
     python analyze_project.py /path/to/project
     python analyze_project.py /path/to/project --auto  # Skip confirmation
+
+    # Update existing subagents (preserves customizations)
+    python analyze_project.py /path/to/project --update-only
+
+    # Add new templates while preserving existing
+    python analyze_project.py /path/to/project --merge
+
+    # Complete regeneration (overwrites all)
+    python analyze_project.py /path/to/project --force
 
 Dependencies:
     - Python 3.9+
@@ -18,7 +28,9 @@ Dependencies:
 
 import argparse
 import logging
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -41,19 +53,23 @@ class ProjectAnalyzer:
     Orchestrates detection, confirmation, and generation.
     """
 
-    def __init__(self, project_path: Path, auto_confirm: bool = False):
+    def __init__(self, project_path: Path, auto_confirm: bool = False,
+                 update_mode: str = "generate"):
         """
         Initialize analyzer.
 
         Args:
             project_path: Path to project root
             auto_confirm: If True, skip user confirmation
+            update_mode: One of "generate", "update-only", "merge", "force"
         """
         self.project_path = Path(project_path).resolve()
         self.auto_confirm = auto_confirm
+        self.update_mode = update_mode
         self.agents_dir = self.project_path / ".claude" / "agents"
 
         logger.info(f"Analyzing project: {self.project_path}")
+        logger.info(f"Update mode: {self.update_mode}")
 
     def analyze(self) -> bool:
         """
@@ -171,6 +187,42 @@ class ProjectAnalyzer:
         }
         return descriptions.get(agent_name, "")
 
+    def _backup_existing_agents(self) -> Optional[Path]:
+        """
+        Create timestamped backup of existing .claude/agents directory.
+
+        Returns:
+            Path to backup directory, or None if no backup needed
+        """
+        if not self.agents_dir.exists():
+            return None
+
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_dir = self.project_path / ".claude" / f"agents.backup.{timestamp}"
+
+        try:
+            shutil.copytree(self.agents_dir, backup_dir)
+            print(f"\n📦 Backup created: {backup_dir.relative_to(self.project_path)}")
+            return backup_dir
+        except Exception as e:
+            logger.warning(f"Failed to create backup: {e}")
+            return None
+
+    def _get_existing_agents(self) -> List[str]:
+        """
+        Get list of existing subagent files.
+
+        Returns:
+            List of agent filenames (without .md extension)
+        """
+        if not self.agents_dir.exists():
+            return []
+
+        return [
+            f.stem for f in self.agents_dir.glob("*.md")
+            if f.name != "SUBAGENT_GUIDE.md"
+        ]
+
     def _generate_subagents(self, detection: DetectionResult, phase_result: PhaseResult) -> bool:
         """
         Generate subagent files from templates.
@@ -182,6 +234,17 @@ class ProjectAnalyzer:
         Returns:
             True if successful, False otherwise
         """
+        # Handle update modes
+        existing_agents = self._get_existing_agents()
+
+        if self.update_mode == "update-only" and not existing_agents:
+            print("\n⚠️  No existing agents found. Use without --update-only to generate new agents.")
+            return False
+
+        # Create backup for merge and force modes
+        if self.update_mode in ["merge", "force"] and existing_agents:
+            self._backup_existing_agents()
+
         # Ensure .claude/agents/ directory exists
         self.agents_dir.mkdir(parents=True, exist_ok=True)
 
@@ -200,7 +263,24 @@ class ProjectAnalyzer:
 
         # Copy/generate templates
         generated_count = 0
+        updated_count = 0
+        skipped_count = 0
+
         for agent_name in detection.recommended_subagents:
+            output_file = self.agents_dir / f"{agent_name}.md"
+
+            # Check if file exists for update-only mode
+            if self.update_mode == "update-only" and agent_name not in existing_agents:
+                logger.debug(f"Skipping new agent in update-only mode: {agent_name}")
+                skipped_count += 1
+                continue
+
+            # Skip existing files in merge mode (preserve customizations)
+            if self.update_mode == "merge" and output_file.exists():
+                logger.debug(f"Preserving existing agent: {agent_name}")
+                skipped_count += 1
+                continue
+
             # Direct template file mapping (exact match first)
             template_file = templates_dir / f"{agent_name}.md"
 
@@ -224,21 +304,36 @@ class ProjectAnalyzer:
                     continue
 
             if template_file.exists():
-                output_file = self.agents_dir / f"{agent_name}.md"
                 self._copy_template(template_file, output_file, detection)
-                print(f"  ✓ Generated: {agent_name}.md")
-                generated_count += 1
+
+                if agent_name in existing_agents:
+                    print(f"  ✓ Updated: {agent_name}.md")
+                    updated_count += 1
+                else:
+                    print(f"  ✓ Generated: {agent_name}.md")
+                    generated_count += 1
             else:
                 logger.debug(f"Template not found: {template_file}")
 
-        if generated_count == 0:
+        # Summary message based on mode
+        total_processed = generated_count + updated_count
+        if total_processed == 0 and self.update_mode != "merge":
             logger.error("No templates could be generated")
             return False
 
         # Generate SUBAGENT_GUIDE.md
         self._generate_usage_guide(detection, phase_result)
 
-        logger.info(f"Generated {generated_count} subagents")
+        # Print summary
+        print(f"\n📊 Summary:")
+        if generated_count > 0:
+            print(f"  • Generated: {generated_count} new agent(s)")
+        if updated_count > 0:
+            print(f"  • Updated: {updated_count} existing agent(s)")
+        if skipped_count > 0:
+            print(f"  • Preserved: {skipped_count} customized agent(s)")
+
+        logger.info(f"Generated {generated_count}, updated {updated_count}, skipped {skipped_count}")
         return True
 
     def _copy_template(
@@ -572,6 +667,21 @@ def main():
         help="Skip confirmation prompts"
     )
     parser.add_argument(
+        "--update-only",
+        action="store_true",
+        help="Update only existing subagent files (preserve customizations)"
+    )
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="Add new templates while backing up existing ones"
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force complete regeneration (overwrite all)"
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose logging"
@@ -582,10 +692,20 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # Determine update mode
+    update_mode = "generate"  # default
+    if args.update_only:
+        update_mode = "update-only"
+    elif args.merge:
+        update_mode = "merge"
+    elif args.force:
+        update_mode = "force"
+
     # Run analysis
     analyzer = ProjectAnalyzer(
         project_path=args.project_path,
-        auto_confirm=args.auto
+        auto_confirm=args.auto,
+        update_mode=update_mode
     )
 
     try:

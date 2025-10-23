@@ -102,24 +102,34 @@ cd ~/.config/claude/skills/adaptive-claude-agents
 
 #### Step 2: Update Each Project (IMPORTANT!)
 
-**For every project where you previously ran `analyze_project.py`**, re-run it to get the new features:
+**For every project where you previously ran `analyze_project.py`**, choose one of the update modes:
 
 ```bash
 # Navigate to your project
 cd /path/to/your/project
 
-# macOS
-python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --auto
+# Option 1: Update only existing files (RECOMMENDED - preserves customizations)
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --update-only --auto
 
-# Linux/WSL
-python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py . --auto
+# Option 2: Add new templates, preserve existing (with backup)
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --merge --auto
+
+# Option 3: Complete regeneration (discards customizations, creates backup)
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --force --auto
 ```
+
+**Update Mode Differences**:
+
+- `--update-only`: Update only existing `.claude/agents/*.md`, no new files added (**safest**)
+- `--merge`: Add new templates, preserve existing files (creates backup)
+- `--force`: Overwrite everything (creates backup, customizations lost)
 
 **This will**:
 
 1. ✅ Regenerate `.claude/agents/SUBAGENT_GUIDE.md` with latest framework-specific workflows
 2. ✅ Add AGGRESSIVE policy to your project's `CLAUDE.md` (if not already present)
 3. ✅ Update all subagent templates with latest best practices
+4. ✅ Protect your customized subagents (when using `--update-only` or `--merge`)
 
 **Repeat Step 2 for all active projects** to enable proactive subagent usage everywhere!
 

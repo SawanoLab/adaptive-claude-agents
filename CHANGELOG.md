@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- **Subagent Update Mechanism** - Smart update modes for existing project subagents
+  - `--update-only`: Update only existing files (safest, preserves customizations)
+  - `--merge`: Add new templates while preserving existing ones with backup
+  - `--force`: Complete regeneration with automatic backup
+  - Timestamped backups (`.claude/agents.backup.YYYYMMDD-HHMMSS/`)
+  - Update summary reporting (generated/updated/preserved counts)
+- **Claude Code Slash Command** - `/update-subagents` for easy updates
+- **Improved Documentation** - Updated README with update workflow examples
 
 ## [1.0.0] - 2025-10-24
 

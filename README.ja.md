@@ -102,24 +102,34 @@ cd ~/.config/claude/skills/adaptive-claude-agents
 
 #### ステップ2: 各プロジェクトの更新（重要！）
 
-**以前に `analyze_project.py` を実行したすべてのプロジェクト**で、再実行して新機能を取得：
+**以前に `analyze_project.py` を実行したすべてのプロジェクト**で、以下のいずれかの方法で更新：
 
 ```bash
 # プロジェクトディレクトリに移動
 cd /path/to/your/project
 
-# macOS
-python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --auto
+# オプション1: 既存ファイルのみ更新（推奨・カスタマイズを保護）
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --update-only --auto
 
-# Linux/WSL
-python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py . --auto
+# オプション2: 新規テンプレートを追加、既存は保護（バックアップ作成）
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --merge --auto
+
+# オプション3: 完全再生成（カスタマイズを破棄、バックアップ作成）
+python3 "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --force --auto
 ```
+
+**各モードの違い**:
+
+- `--update-only`: 既存の `.claude/agents/*.md` のみ更新、新規ファイルは追加しない（**最も安全**）
+- `--merge`: 新規テンプレートを追加、既存ファイルは保護（バックアップ作成）
+- `--force`: すべて上書き（バックアップ作成、カスタマイズは失われる）
 
 **これにより**:
 
 1. ✅ 最新のフレームワーク別ワークフローで `.claude/agents/SUBAGENT_GUIDE.md` を再生成
 2. ✅ プロジェクトの `CLAUDE.md` に AGGRESSIVE ポリシーを追加（未設定の場合）
 3. ✅ すべてのサブエージェントテンプレートを最新のベストプラクティスで更新
+4. ✅ カスタマイズしたサブエージェントの保護（`--update-only`または`--merge`使用時）
 
 **すべてのアクティブなプロジェクトでステップ2を繰り返して**、どこでもプロアクティブなサブエージェント活用を有効化！
 
