@@ -300,6 +300,68 @@ adaptive-claude-agents/
 
 ---
 
+## 🧪 Testing & Development
+
+### Running Tests
+
+This project uses **pytest** with comprehensive test coverage:
+
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Run all tests
+pytest
+
+# Run specific test categories
+pytest -m "not slow"              # Skip slow tests
+pytest -m benchmark               # Run performance benchmarks only
+pytest -m integration             # Run integration tests only
+
+# Run with coverage report
+pytest --cov=skills --cov-report=html
+
+# Run tests in parallel (faster)
+pytest -n auto
+```
+
+### Test Structure
+
+```
+tests/
+├── README.md              # Comprehensive testing docs
+├── conftest.py            # Fixtures for 11 frameworks
+├── test_detection.py      # Framework detection tests
+├── test_generation.py     # Subagent generation tests
+├── test_integration.py    # End-to-end workflow tests
+└── test_performance.py    # Performance benchmarks
+```
+
+### Quality Metrics
+
+- **Coverage Target**: 85%+ overall, 90%+ for detection logic
+- **Performance Targets**:
+  - Detection: < 500ms per framework
+  - Generation: < 2s full workflow
+  - Memory: < 100MB peak usage
+
+### Code Quality Tools
+
+```bash
+# Format code
+black skills/ tests/
+
+# Lint code
+ruff check skills/ tests/
+
+# Type check
+mypy skills/
+```
+
+See [tests/README.md](./tests/README.md) for comprehensive testing documentation.
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for:

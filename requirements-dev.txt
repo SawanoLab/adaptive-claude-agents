@@ -1,0 +1,51 @@
+# Development and Testing Dependencies
+# Adaptive Claude Agents v0.5.0-dev
+
+# ============================================================================
+# Core Testing Framework
+# ============================================================================
+
+# pytest - Testing framework
+pytest==8.0.0
+
+# pytest plugins
+pytest-cov==4.1.0           # Code coverage reporting
+pytest-benchmark==4.0.0      # Performance benchmarking
+pytest-xdist==3.5.0          # Parallel test execution
+pytest-timeout==2.2.0        # Test timeout management
+pytest-mock==3.12.0          # Mocking utilities
+
+# ============================================================================
+# Code Quality Tools
+# ============================================================================
+
+# Linting
+ruff==0.1.14                 # Fast Python linter (replaces flake8, isort, etc.)
+mypy==1.8.0                  # Static type checking
+
+# Formatting
+black==24.1.0                # Code formatter
+
+# ============================================================================
+# Coverage and Reporting
+# ============================================================================
+
+coverage[toml]==7.4.0        # Coverage measurement
+codecov==2.1.13              # Codecov integration
+
+# ============================================================================
+# Production Dependencies (already in main requirements)
+# ============================================================================
+
+# PyYAML is required for main functionality
+# pyyaml==6.0.1              # Already in main requirements
+
+# ============================================================================
+# Development Utilities
+# ============================================================================
+
+# IPython for interactive debugging
+ipython==8.20.0
+
+# Type stubs for better type checking
+types-PyYAML==6.0.12.12
