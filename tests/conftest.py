@@ -494,26 +494,32 @@ def ios_swift_project(tmp_path):
     project = tmp_path / "ios-swift-demo"
     project.mkdir()
 
-    # Package.swift (Swift Package Manager)
-    (project / "Package.swift").write_text('''// swift-tools-version:5.9
-import PackageDescription
+    # Create .xcodeproj directory (Xcode project structure)
+    xcodeproj = project / "ios-swift-demo.xcodeproj"
+    xcodeproj.mkdir()
 
-let package = Package(
-    name: "TestiOSApp",
-    platforms: [.iOS(.v15)],
-    products: [
-        .library(name: "TestiOSApp", targets: ["TestiOSApp"]),
-    ],
-    dependencies: [],
-    targets: [
-        .target(name: "TestiOSApp", dependencies: []),
-    ]
-)
+    # project.pbxproj (minimal Xcode project file)
+    (xcodeproj / "project.pbxproj").write_text('''// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {
+    };
+    objectVersion = 56;
+    objects = {
+        /* Begin PBXProject section */
+        TestProject /* PBXProject */ = {
+            isa = PBXProject;
+            buildConfigurationList = TestList /* XCConfigurationList */;
+        };
+        /* End PBXProject section */
+    };
+    rootObject = TestProject /* Project object */;
+}
 ''')
 
     # Sources directory
-    sources_dir = project / "Sources" / "TestiOSApp"
-    sources_dir.mkdir(parents=True)
+    sources_dir = project / "Sources"
+    sources_dir.mkdir()
 
     # ContentView.swift
     (sources_dir / "ContentView.swift").write_text('''import SwiftUI
