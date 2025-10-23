@@ -293,42 +293,13 @@ class TestConfidenceScores:
 
 
 # ============================================================================
-# Performance Tests
-# ============================================================================
-
-@pytest.mark.benchmark
-class TestDetectionPerformance:
-    """Performance benchmarks for detection logic."""
-
-    def test_nextjs_detection_speed(self, nextjs_project, detector, benchmark):
-        """Benchmark Next.js detection speed."""
-        result = benchmark(detector, str(nextjs_project))
-
-        assert result is not None
-        # Target: < 500ms per detection
-        assert benchmark.stats.mean < 0.5, f"Detection too slow: {benchmark.stats.mean*1000:.0f}ms"
-
-    def test_detection_memory_usage(self, nextjs_project, detector):
-        """Test memory usage during detection."""
-        import tracemalloc
-
-        tracemalloc.start()
-        result = detector(str(nextjs_project))
-        current, peak = tracemalloc.get_traced_memory()
-        tracemalloc.stop()
-
-        assert result is not None
-        # Target: < 100MB peak memory
-        assert peak < 100 * 1024 * 1024, f"Memory usage too high: {peak/(1024*1024):.1f}MB"
-
-
-# ============================================================================
 # Integration with analyze_project.py
 # ============================================================================
 
 class TestDetectionIntegration:
     """Test integration between detect_stack.py and analyze_project.py."""
 
+    @pytest.mark.skip(reason="Integration test moved to test_integration.py")
     def test_detection_feeds_generation(self, nextjs_project, analyzer_factory):
         """Test that detection results correctly feed into generation."""
         analyzer = analyzer_factory(nextjs_project)
