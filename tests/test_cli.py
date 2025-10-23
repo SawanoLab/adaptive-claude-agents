@@ -189,3 +189,68 @@ def cli_runner():
         cmd = [sys.executable, "skills/project-analyzer/detect_stack.py"] + list(args)
         return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
     return run
+
+
+class TestCLIMainFunction:
+    """Test main() function code paths for coverage."""
+
+    def test_verbose_with_success(self, nextjs_project):
+        """Test verbose mode outputs extra info on success."""
+        result = subprocess.run(
+            [sys.executable, "skills/project-analyzer/detect_stack.py",
+             str(nextjs_project), "--verbose"],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 0
+        # Verbose should show confidence and subagents
+        output = result.stdout + result.stderr
+        assert "confidence" in output.lower() or "detected" in output.lower()
+
+    def test_verbose_with_failure(self, tmp_path):
+        """Test verbose mode outputs debug info on failure."""
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, "skills/project-analyzer/detect_stack.py",
+             str(empty_dir), "--verbose"],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 1
+        output = result.stdout + result.stderr
+        # Verbose failure should suggest using --verbose (circular but tests the branch)
+        assert "Could not" in output or "detect" in output.lower()
+
+    def test_json_mode_on_failure(self, tmp_path):
+        """Test JSON mode handles failure gracefully."""
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, "skills/project-analyzer/detect_stack.py",
+             str(empty_dir), "--json"],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 1
+        # JSON mode on failure should have no/minimal stdout
+        assert len(result.stdout) < 50
+
+    def test_quiet_mode_success(self, nextjs_project):
+        """Test quiet mode suppresses normal output on success."""
+        result = subprocess.run(
+            [sys.executable, "skills/project-analyzer/detect_stack.py",
+             str(nextjs_project), "--quiet"],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 0
+        # Quiet mode should produce no stdout (stderr may have INFO from other loggers)
+        assert result.stdout == ""
+        # Main purpose: no "Tech Stack Detection Result" header in quiet mode
