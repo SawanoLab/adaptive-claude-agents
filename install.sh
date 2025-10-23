@@ -23,7 +23,7 @@ NC='\033[0m' # No Color
 # Configuration
 REPO_URL="https://github.com/SawanoLab/adaptive-claude-agents.git"
 SKILL_NAME="adaptive-claude-agents"
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Detect OS
 detect_os() {

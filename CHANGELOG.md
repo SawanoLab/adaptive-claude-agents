@@ -7,15 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.1.0] - 2025-10-24
+
+### 🎯 Smart Subagent Update System
+
+**Major feature**: Users can now safely update project subagents when templates are improved, with full customization protection.
+
 ### Added
-- **Subagent Update Mechanism** - Smart update modes for existing project subagents
-  - `--update-only`: Update only existing files (safest, preserves customizations)
-  - `--merge`: Add new templates while preserving existing ones with backup
+
+#### Subagent Update Mechanism
+- **Three update modes** for different scenarios:
+  - `--update-only`: Update only existing files (recommended for unmodified projects)
+  - `--merge`: Add new templates while preserving existing customizations (safest)
   - `--force`: Complete regeneration with automatic backup
-  - Timestamped backups (`.claude/agents.backup.YYYYMMDD-HHMMSS/`)
-  - Update summary reporting (generated/updated/preserved counts)
-- **Claude Code Slash Command** - `/update-subagents` for easy updates
-- **Improved Documentation** - Updated README with update workflow examples
+- **Automatic timestamped backups**: `.claude/agents.backup.YYYYMMDD-HHMMSS/`
+- **Update summary reporting**: Shows generated/updated/preserved file counts
+- **Smart file detection**: Identifies existing agents and customizations
+
+#### Interactive Claude Code Workflow
+- **Natural language triggers**:
+  - Japanese: "サブエージェントを更新", "テンプレートを更新"
+  - English: "update subagents", "refresh agents"
+- **Interactive mode selection**: Claude presents 3 options with clear explanations
+- **Slash command**: `/update-subagents` for quick access
+- **Auto-detection**: Recommends safest mode based on customization status
+
+#### Documentation
+- **Comprehensive Update Guide**: [`docs/SUBAGENT_UPDATE_GUIDE.md`](docs/SUBAGENT_UPDATE_GUIDE.md)
+  - Detailed mode comparisons
+  - Migration scenarios for version upgrades
+  - Backup management and restoration
+  - Best practices and troubleshooting
+- **Test Guide**: [`docs/UPDATE_WORKFLOW_TEST.md`](docs/UPDATE_WORKFLOW_TEST.md)
+  - 7 test scenarios covering all modes
+  - Quick test commands
+  - Success criteria checklist
+- **Skills Integration**: Updated [`skills/SKILL.md`](skills/SKILL.md) with trigger keywords
+- **Project Context**: Enhanced [`CLAUDE.md`](CLAUDE.md) with update workflow
+
+### Changed
+- **README**: Updated installation instructions with update mode examples
+- **Version**: Bumped to 1.1.0 across all files
+
+### Use Cases
+
+**Scenario 1: Framework just updated templates**
+```bash
+cd /path/to/project
+python3 "$SKILLS_DIR/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --update-only --auto
+```
+
+**Scenario 2: New templates added, have customizations**
+```bash
+python3 "$SKILLS_DIR/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --merge --auto
+```
+
+**Scenario 3: Major version upgrade**
+```bash
+python3 "$SKILLS_DIR/adaptive-claude-agents/skills/project-analyzer/analyze_project.py" . --force --auto
+```
+
+**Or simply in Claude Code**:
+```
+User: サブエージェントを更新して
+Claude: [Interactive workflow with mode selection]
+```
+
+---
 
 ## [1.0.0] - 2025-10-24
 

@@ -1,12 +1,12 @@
 # Adaptive Claude Agents
 
-> **Status**: v1.0.0 - Production Ready 🎉
+> **Status**: v1.1.0 - Production Ready 🎉
 >
 > Auto-generate project-specific Claude Code subagents that adapt to your development phase.
 > **Perfect for beginners** - Start vibe coding in 5 minutes!
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)](#installation)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
