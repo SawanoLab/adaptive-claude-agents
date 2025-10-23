@@ -65,6 +65,26 @@ cd adaptive-claude-agents
 ./install.sh
 ```
 
+### Updating
+
+Already installed? Update to get the latest AGGRESSIVE mode features:
+
+```bash
+# macOS
+cd "$HOME/Library/Application Support/Claude/skills/adaptive-claude-agents"
+./update.sh
+
+# Linux/WSL
+cd ~/.config/claude/skills/adaptive-claude-agents
+./update.sh
+```
+
+**What's updated**:
+
+- Auto-generated SUBAGENT_GUIDE.md (framework-specific)
+- AGGRESSIVE policy auto-configured in your CLAUDE.md
+- Proactive subagent triggers for 3+ file tasks
+
 ### Usage
 
 In Claude Code, simply ask:
