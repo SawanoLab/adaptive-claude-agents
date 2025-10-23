@@ -767,16 +767,22 @@ class TechStackDetector:
             with open(pubspec, 'r', encoding='utf-8') as f:
                 pubspec_data = yaml.safe_load(f)
 
-            # Check for flutter SDK
-            if not pubspec_data or 'flutter' not in pubspec_data:
+            if not pubspec_data:
+                return None
+
+            # Check for flutter SDK (in dependencies or as top-level config)
+            deps = pubspec_data.get('dependencies', {})
+            has_flutter_dep = 'flutter' in deps
+            has_flutter_config = 'flutter' in pubspec_data
+
+            if not has_flutter_dep and not has_flutter_config:
                 # Has pubspec.yaml but no flutter - likely a Dart CLI project
                 return None
 
             confidence += 0.6
             indicators.append("pubspec.yaml with flutter SDK: +0.6")
 
-            # Check dependencies
-            deps = pubspec_data.get('dependencies', {})
+            # deps already defined above, continue using it
             dev_deps = pubspec_data.get('dev_dependencies', {})
             all_deps = {**deps, **dev_deps}
 
@@ -1022,16 +1028,21 @@ class TechStackDetector:
         # Check for root-level PHP files
         root_php_files = list(self.project_path.glob("*.php"))
         num_root_php = len(root_php_files)
-        
+
         if num_root_php >= 10:
             indicators.append(f"{num_root_php} root-level PHP files: +0.2")
             confidence += 0.2
         elif num_root_php >= 5:
             indicators.append(f"{num_root_php} root-level PHP files: +0.15")
             confidence += 0.15
-        elif num_root_php >= 3:
+        elif num_root_php >= 2:
+            # Lowered threshold: even 2 PHP files can indicate a simple PHP project
             indicators.append(f"{num_root_php} root-level PHP files: +0.1")
             confidence += 0.1
+        elif num_root_php >= 1 and composer_file.exists():
+            # If has composer.json + at least 1 PHP file, likely a PHP project
+            indicators.append(f"{num_root_php} PHP file with composer.json: +0.05")
+            confidence += 0.05
         else:
             # Too few PHP files
             return None

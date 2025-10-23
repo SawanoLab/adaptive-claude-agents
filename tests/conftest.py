@@ -560,12 +560,18 @@ def php_project(tmp_path):
         }
     }, indent=2))
 
-    # index.php
+    # index.php (with routing indicators for detection)
     (project / "index.php").write_text('''<?php
+// Simple routing
+$uri = $_SERVER['REQUEST_URI'];
+$method = $_SERVER['REQUEST_METHOD'];
+
 header('Content-Type: application/json');
 
 $data = [
     'message' => 'Hello World',
+    'uri' => $uri,
+    'method' => $method,
     'timestamp' => time()
 ];
 
