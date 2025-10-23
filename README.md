@@ -201,6 +201,7 @@ See [EXAMPLES.md](./docs/EXAMPLES.md#subagent-workflows) for detailed walkthroug
 | Document | Description |
 |----------|-------------|
 | [Quick Start](./docs/QUICKSTART.md) | 5-minute getting started guide |
+| [Subagent Update Guide](./docs/SUBAGENT_UPDATE_GUIDE.md) | How to safely update project subagents |
 | [Examples](./docs/EXAMPLES.md) | 5 real-world examples with full output |
 | [Troubleshooting](./docs/TROUBLESHOOTING.md) | Common issues and solutions |
 | [Contributing](./CONTRIBUTING.md) | How to contribute templates |

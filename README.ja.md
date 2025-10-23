@@ -201,6 +201,7 @@ python3 ~/.config/claude/skills/adaptive-claude-agents/skills/project-analyzer/a
 | ドキュメント | 説明 |
 |----------|------|
 | [クイックスタート](./docs/QUICKSTART.ja.md) | 5分で始めるガイド |
+| [サブエージェント更新ガイド](./docs/SUBAGENT_UPDATE_GUIDE.md) | プロジェクトのサブエージェントを安全に更新する方法 |
 | [使用例](./docs/EXAMPLES.ja.md) | 5つの実例と完全な出力 |
 | [トラブルシューティング](./docs/TROUBLESHOOTING.ja.md) | よくある問題と解決策 |
 | [コントリビューション](./CONTRIBUTING.md) | テンプレートの追加方法 |
