@@ -926,67 +926,642 @@ class UserSeeder
 
 ## Troubleshooting
 
-### Issue: "SQLSTATE[23000]: Integrity constraint violation"
+### Issue 1: "SQLSTATE[23000]: Integrity constraint violation" on INSERT/UPDATE
 
-**Cause**: Foreign key constraint violation or unique constraint violation
+**Symptom**: `PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry` when inserting or updating records.
 
-**Solution**: Check related records exist, verify unique values
+**Cause**: Trying to insert duplicate value in UNIQUE column, or foreign key constraint violation.
+
+**Solution**:
+
+```php
+// ❌ Bad: No error handling for duplicates
+public function createUser(string $email): int
+{
+    $stmt = $this->db->prepare(
+        'INSERT INTO users (email, name) VALUES (:email, :name)'
+    );
+    $stmt->execute(['email' => $email, 'name' => 'New User']);
+    // Crashes if email already exists!
+
+    return (int) $this->db->lastInsertId();
+}
+
+
+// ✅ Good: Handle constraint violations gracefully
+public function createUser(string $email, string $name): int
+{
+    try {
+        $stmt = $this->db->prepare(
+            'INSERT INTO users (email, name) VALUES (:email, :name)'
+        );
+        $stmt->execute(['email' => $email, 'name' => $name]);
+
+        return (int) $this->db->lastInsertId();
+
+    } catch (PDOException $e) {
+        // Check for duplicate entry error
+        if ($e->getCode() == '23000' && strpos($e->getMessage(), 'Duplicate entry') !== false) {
+            throw new \RuntimeException("Email {$email} is already registered", 409);
+        }
+
+        // Check for foreign key constraint violation
+        if ($e->getCode() == '23000' && strpos($e->getMessage(), 'foreign key constraint') !== false) {
+            throw new \RuntimeException("Referenced record does not exist", 400);
+        }
+
+        throw $e;
+    }
+}
+
+
+// ✅ Good: Use INSERT ... ON DUPLICATE KEY UPDATE
+public function upsertUser(string $email, string $name): int
+{
+    $stmt = $this->db->prepare(
+        'INSERT INTO users (email, name, created_at, updated_at)
+         VALUES (:email, :name, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+            name = VALUES(name),
+            updated_at = NOW()'
+    );
+
+    $stmt->execute(['email' => $email, 'name' => $name]);
+
+    return (int) $this->db->lastInsertId();
+}
+
+
+// ✅ Good: Check before insert
+public function createUserSafe(string $email, string $name): ?int
+{
+    // Check if email exists
+    $stmt = $this->db->prepare('SELECT id FROM users WHERE email = :email');
+    $stmt->execute(['email' => $email]);
+
+    if ($stmt->fetch()) {
+        return null;  // Email already exists
+    }
+
+    // Insert user
+    $stmt = $this->db->prepare(
+        'INSERT INTO users (email, name) VALUES (:email, :name)'
+    );
+    $stmt->execute(['email' => $email, 'name' => $name]);
+
+    return (int) $this->db->lastInsertId();
+}
+```
+
+**Check foreign key constraints**:
 
 ```sql
--- Check foreign key constraints
-SELECT * FROM information_schema.TABLE_CONSTRAINTS
-WHERE TABLE_NAME = 'posts';
+-- View all foreign key constraints for table
+SELECT
+    TABLE_NAME,
+    COLUMN_NAME,
+    CONSTRAINT_NAME,
+    REFERENCED_TABLE_NAME,
+    REFERENCED_COLUMN_NAME
+FROM information_schema.KEY_COLUMN_USAGE
+WHERE TABLE_SCHEMA = 'your_database'
+  AND TABLE_NAME = 'posts'
+  AND REFERENCED_TABLE_NAME IS NOT NULL;
 
--- Disable foreign key checks temporarily (use carefully)
+-- Temporarily disable foreign key checks (development only!)
 SET FOREIGN_KEY_CHECKS = 0;
 -- Run your query
 SET FOREIGN_KEY_CHECKS = 1;
 ```
 
-### Issue: Slow queries
+---
 
-**Cause**: Missing indexes or inefficient query structure
+### Issue 2: Slow Queries Taking 5+ Seconds
 
-**Solution**: Use EXPLAIN, add indexes, optimize query
+**Symptom**: Queries are very slow, especially with JOINs or WHERE clauses. Page loads take 5-10 seconds.
+
+**Cause**: Missing indexes on columns used in WHERE, JOIN, ORDER BY clauses.
+
+**Solution**:
 
 ```sql
--- Analyze slow query
-EXPLAIN SELECT * FROM posts WHERE user_id = 123;
+-- ❌ Bad: No index on user_id (slow scan)
+SELECT * FROM posts WHERE user_id = 123;
+-- Execution time: 5.2 seconds on 1M rows
 
--- Add missing index
+
+-- ✅ Good: Add index on user_id
 CREATE INDEX idx_user_id ON posts(user_id);
 
--- Verify improvement
-EXPLAIN SELECT * FROM posts WHERE user_id = 123;
+-- Now query is fast
+SELECT * FROM posts WHERE user_id = 123;
+-- Execution time: 0.02 seconds
+
+
+-- ❌ Bad: Composite WHERE without composite index
+SELECT * FROM posts
+WHERE status = 'published' AND user_id = 123
+ORDER BY created_at DESC;
+-- Uses only one index, still slow
+
+
+-- ✅ Good: Composite index for common query patterns
+CREATE INDEX idx_status_user_created ON posts(status, user_id, created_at);
+
+-- Now query uses composite index (fast!)
+SELECT * FROM posts
+WHERE status = 'published' AND user_id = 123
+ORDER BY created_at DESC;
+
+
+-- ❌ Bad: SELECT * from large tables (fetches all columns)
+SELECT * FROM posts WHERE user_id = 123;
+
+
+-- ✅ Good: Select only needed columns (reduces I/O)
+SELECT id, title, slug, created_at FROM posts WHERE user_id = 123;
 ```
 
-### Issue: "Deadlock found when trying to get lock"
+**Analyze queries with EXPLAIN**:
 
-**Cause**: Concurrent transactions locking same resources
+```sql
+-- Check query execution plan
+EXPLAIN SELECT p.*, u.name
+FROM posts p
+INNER JOIN users u ON p.user_id = u.id
+WHERE p.status = 'published'
+ORDER BY p.created_at DESC
+LIMIT 10;
 
-**Solution**: Retry transaction, optimize query order, reduce transaction scope
+-- Key columns to check:
+-- - type: Should be 'ref' or 'eq_ref', NOT 'ALL' (full table scan)
+-- - possible_keys: Shows available indexes
+-- - key: Shows which index is actually used
+-- - rows: Estimated rows scanned (lower is better)
+-- - Extra: Should NOT show "Using filesort" or "Using temporary"
+
+-- Better: Use EXPLAIN ANALYZE (MySQL 8.0.18+)
+EXPLAIN ANALYZE SELECT ...;
+-- Shows actual execution time and row counts
+```
+
+**Identify slow queries**:
+
+```sql
+-- Enable slow query log (MySQL 5.7+)
+SET GLOBAL slow_query_log = 'ON';
+SET GLOBAL long_query_time = 1;  -- Queries > 1 second
+SET GLOBAL slow_query_log_file = '/var/log/mysql/slow-query.log';
+
+-- Check current slow query settings
+SHOW VARIABLES LIKE 'slow_query%';
+SHOW VARIABLES LIKE 'long_query_time';
+```
+
+---
+
+### Issue 3: "General error: 1205 Lock wait timeout exceeded"
+
+**Symptom**: `SQLSTATE[HY000]: General error: 1205 Lock wait timeout exceeded; try restarting transaction`
+
+**Cause**: Long-running transaction holding locks, preventing other queries from completing.
+
+**Solution**:
 
 ```php
-$maxRetries = 3;
-$attempt = 0;
+// ❌ Bad: Transaction held for too long
+public function updatePostsInBatch(array $postIds): void
+{
+    $this->db->beginTransaction();
 
-while ($attempt < $maxRetries) {
-    try {
+    foreach ($postIds as $postId) {
+        // Sleep 100ms per post (total 10 seconds for 100 posts!)
+        usleep(100000);
+
+        $stmt = $this->db->prepare('UPDATE posts SET status = ? WHERE id = ?');
+        $stmt->execute(['published', $postId]);
+    }
+
+    $this->db->commit();  // Lock held for 10+ seconds!
+}
+
+
+// ✅ Good: Reduce transaction scope (commit frequently)
+public function updatePostsInBatch(array $postIds): void
+{
+    $batchSize = 10;
+    $batches = array_chunk($postIds, $batchSize);
+
+    foreach ($batches as $batch) {
         $this->db->beginTransaction();
-        // Your queries
-        $this->db->commit();
-        break;
-    } catch (PDOException $e) {
-        $this->db->rollBack();
-        if ($e->getCode() == '40001' && $attempt < $maxRetries - 1) {
-            $attempt++;
-            usleep(100000); // Wait 100ms before retry
-        } else {
-            throw $e;
+
+        $placeholders = implode(',', array_fill(0, count($batch), '?'));
+        $stmt = $this->db->prepare(
+            "UPDATE posts SET status = 'published' WHERE id IN ($placeholders)"
+        );
+        $stmt->execute($batch);
+
+        $this->db->commit();  // Commit every 10 posts (faster)
+    }
+}
+
+
+// ✅ Good: Increase lock wait timeout (as workaround)
+$this->db->exec('SET innodb_lock_wait_timeout = 120');  // Default: 50 seconds
+
+
+// ✅ Good: Show current lock status
+$stmt = $this->db->query('SHOW ENGINE INNODB STATUS');
+$status = $stmt->fetchColumn();
+// Look for "TRANSACTIONS" section to see blocking locks
+```
+
+**Check current locks**:
+
+```sql
+-- Show all active transactions
+SELECT * FROM information_schema.INNODB_TRX;
+
+-- Show all locks waiting
+SELECT * FROM information_schema.INNODB_LOCK_WAITS;
+
+-- Show all locks held
+SELECT * FROM information_schema.INNODB_LOCKS;
+
+-- Kill blocking transaction (use carefully!)
+-- KILL <trx_mysql_thread_id>;
+```
+
+---
+
+### Issue 4: "SQLSTATE[HY000]: General error: 2006 MySQL server has gone away"
+
+**Symptom**: `PDOException: SQLSTATE[HY000]: General error: 2006 MySQL server has gone away` during long-running scripts.
+
+**Cause**: Connection timeout (wait_timeout) expired, or query too large (max_allowed_packet).
+
+**Solution**:
+
+```php
+// ❌ Bad: Long-running script without reconnection
+public function processLargeDataset(): void
+{
+    $stmt = $this->db->query('SELECT * FROM large_table');
+
+    foreach ($stmt as $row) {
+        // Process each row (takes 10+ minutes)
+        usleep(100000);  // 100ms per row
+        // Connection times out after 8 hours (default wait_timeout)
+    }
+
+    // Next query fails: "MySQL server has gone away"
+}
+
+
+// ✅ Good: Ping connection before query
+public function processLargeDataset(): void
+{
+    $stmt = $this->db->query('SELECT * FROM large_table');
+
+    foreach ($stmt as $row) {
+        usleep(100000);
+
+        // Ping connection every 100 rows to keep alive
+        if ($row['id'] % 100 === 0) {
+            try {
+                $this->db->query('SELECT 1');
+            } catch (PDOException $e) {
+                // Reconnect if connection lost
+                $this->db = Database::getInstance();
+            }
+        }
+
+        // Process row
+    }
+}
+
+
+// ✅ Good: Increase wait_timeout (MySQL server setting)
+-- my.cnf or my.ini
+wait_timeout = 28800  -- 8 hours (default)
+interactive_timeout = 28800
+
+
+// ✅ Good: For large INSERT/UPDATE, increase max_allowed_packet
+-- my.cnf
+max_allowed_packet = 64M  -- Default: 16M-64M
+
+
+// ✅ Good: Use PDO::ATTR_PERSISTENT for persistent connections
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_PERSISTENT => true,  // Keep connection alive
+];
+
+$pdo = new PDO($dsn, $user, $pass, $options);
+```
+
+**Check MySQL timeout settings**:
+
+```sql
+SHOW VARIABLES LIKE 'wait_timeout';
+SHOW VARIABLES LIKE 'interactive_timeout';
+SHOW VARIABLES LIKE 'max_allowed_packet';
+```
+
+---
+
+### Issue 5: "Deadlock found when trying to get lock; try restarting transaction"
+
+**Symptom**: `SQLSTATE[40001]: Serialization failure: 1213 Deadlock found when trying to get lock`
+
+**Cause**: Two transactions trying to lock same rows in different order, creating circular dependency.
+
+**Solution**:
+
+```php
+// ❌ Bad: Inconsistent lock order (causes deadlocks)
+// Transaction A:
+$this->db->beginTransaction();
+$this->db->query('UPDATE posts SET views = views + 1 WHERE id = 1');
+usleep(10000);
+$this->db->query('UPDATE users SET post_count = post_count + 1 WHERE id = 100');
+$this->db->commit();
+
+// Transaction B (runs concurrently):
+$this->db->beginTransaction();
+$this->db->query('UPDATE users SET post_count = post_count + 1 WHERE id = 100');
+usleep(10000);
+$this->db->query('UPDATE posts SET views = views + 1 WHERE id = 1');
+$this->db->commit();
+// DEADLOCK! A locks posts, B locks users, then they wait for each other
+
+
+// ✅ Good: Always lock resources in same order
+// Both transactions:
+$this->db->beginTransaction();
+$this->db->query('UPDATE users SET post_count = post_count + 1 WHERE id = 100');
+$this->db->query('UPDATE posts SET views = views + 1 WHERE id = 1');
+$this->db->commit();
+
+
+// ✅ Good: Retry transaction on deadlock
+public function updateWithRetry(callable $operation, int $maxRetries = 3): void
+{
+    $attempt = 0;
+
+    while ($attempt < $maxRetries) {
+        try {
+            $this->db->beginTransaction();
+            $operation();
+            $this->db->commit();
+            break;  // Success!
+
+        } catch (PDOException $e) {
+            $this->db->rollBack();
+
+            // Check for deadlock error (code 40001 or 1213)
+            if (($e->getCode() == '40001' || $e->getCode() == '1213') && $attempt < $maxRetries - 1) {
+                $attempt++;
+                usleep(rand(10000, 100000));  // Random backoff: 10-100ms
+                continue;
+            }
+
+            throw $e;  // Not a deadlock, or max retries exceeded
         }
     }
 }
+
+// Usage:
+$this->updateWithRetry(function() {
+    $stmt = $this->db->prepare('UPDATE posts SET views = views + 1 WHERE id = ?');
+    $stmt->execute([1]);
+
+    $stmt = $this->db->prepare('UPDATE users SET post_count = post_count + 1 WHERE id = ?');
+    $stmt->execute([100]);
+});
+
+
+// ✅ Good: Use SELECT ... FOR UPDATE to lock rows explicitly
+$this->db->beginTransaction();
+
+// Lock post row first
+$stmt = $this->db->prepare('SELECT * FROM posts WHERE id = ? FOR UPDATE');
+$stmt->execute([1]);
+$post = $stmt->fetch();
+
+// Lock user row second
+$stmt = $this->db->prepare('SELECT * FROM users WHERE id = ? FOR UPDATE');
+$stmt->execute([$post['user_id']]);
+$user = $stmt->fetch();
+
+// Now safely update both (locks held)
+$this->db->query('UPDATE posts SET views = views + 1 WHERE id = 1');
+$this->db->query('UPDATE users SET post_count = post_count + 1 WHERE id = ' . $post['user_id']);
+
+$this->db->commit();
 ```
+
+**Check recent deadlocks**:
+
+```sql
+-- Show latest deadlock information
+SHOW ENGINE INNODB STATUS;
+-- Look for "LATEST DETECTED DEADLOCK" section
+```
+
+---
+
+### Issue 6: N+1 Query Problem in PHP (Fetching Related Data)
+
+**Symptom**: Loading 10 posts with authors takes 11 database queries (1 for posts + 10 for each author). Page load is very slow.
+
+**Cause**: Fetching related data in a loop (N+1 queries) instead of using JOINs.
+
+**Solution**:
+
+```php
+// ❌ Bad: N+1 queries (1 + 10 = 11 queries for 10 posts)
+public function getPostsWithAuthors(): array
+{
+    // Query 1: Get posts
+    $stmt = $this->db->query('SELECT * FROM posts LIMIT 10');
+    $posts = $stmt->fetchAll();
+
+    // Query 2-11: Get author for EACH post
+    foreach ($posts as &$post) {
+        $stmt = $this->db->prepare('SELECT name FROM users WHERE id = ?');
+        $stmt->execute([$post['user_id']]);
+        $post['author_name'] = $stmt->fetchColumn();
+    }
+
+    return $posts;
+}
+
+
+// ✅ Good: Single query with JOIN (1 query total)
+public function getPostsWithAuthors(): array
+{
+    $stmt = $this->db->query(
+        'SELECT p.*, u.name AS author_name
+         FROM posts p
+         INNER JOIN users u ON p.user_id = u.id
+         LIMIT 10'
+    );
+
+    return $stmt->fetchAll();
+}
+
+
+// ✅ Good: Two queries with IN clause (2 queries total)
+public function getPostsWithAuthorsAlternative(): array
+{
+    // Query 1: Get posts
+    $stmt = $this->db->query('SELECT * FROM posts LIMIT 10');
+    $posts = $stmt->fetchAll();
+
+    // Query 2: Get all authors at once with IN clause
+    $userIds = array_column($posts, 'user_id');
+    $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+
+    $stmt = $this->db->prepare("SELECT id, name FROM users WHERE id IN ($placeholders)");
+    $stmt->execute($userIds);
+    $users = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);  // id => name
+
+    // Attach author names to posts
+    foreach ($posts as &$post) {
+        $post['author_name'] = $users[$post['user_id']] ?? 'Unknown';
+    }
+
+    return $posts;
+}
+
+
+// ✅ Good: Load posts with all related data (comments, tags)
+public function getPostsWithAllRelations(): array
+{
+    // Query 1: Get posts with authors
+    $stmt = $this->db->query(
+        'SELECT p.*, u.name AS author_name
+         FROM posts p
+         INNER JOIN users u ON p.user_id = u.id
+         LIMIT 10'
+    );
+    $posts = $stmt->fetchAll();
+
+    $postIds = array_column($posts, 'id');
+    $placeholders = implode(',', array_fill(0, count($postIds), '?'));
+
+    // Query 2: Get all comments for these posts
+    $stmt = $this->db->prepare(
+        "SELECT post_id, COUNT(*) AS comment_count
+         FROM comments
+         WHERE post_id IN ($placeholders)
+         GROUP BY post_id"
+    );
+    $stmt->execute($postIds);
+    $commentCounts = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+    // Query 3: Get all tags for these posts
+    $stmt = $this->db->prepare(
+        "SELECT pt.post_id, GROUP_CONCAT(t.name) AS tags
+         FROM post_tag pt
+         INNER JOIN tags t ON pt.tag_id = t.id
+         WHERE pt.post_id IN ($placeholders)
+         GROUP BY pt.post_id"
+    );
+    $stmt->execute($postIds);
+    $postTags = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+    // Attach related data
+    foreach ($posts as &$post) {
+        $post['comment_count'] = $commentCounts[$post['id']] ?? 0;
+        $post['tags'] = isset($postTags[$post['id']])
+            ? explode(',', $postTags[$post['id']])
+            : [];
+    }
+
+    return $posts;
+    // Total: 3 queries instead of 1 + 10 + 10 + 10 = 31 queries!
+}
+```
+
+---
+
+### Issue 7: Character Encoding Issues (Garbled Text, Emojis Not Displaying)
+
+**Symptom**: Japanese characters display as `???` or `文字化け`. Emojis like 😀 don't save correctly.
+
+**Cause**: Using utf8 (3-byte) instead of utf8mb4 (4-byte) character set. Missing charset in PDO connection.
+
+**Solution**:
+
+```php
+// ❌ Bad: Using utf8 (can't store emojis)
+CREATE TABLE posts (
+    title VARCHAR(255) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;  -- Only 3 bytes! (no emojis)
+
+
+// ✅ Good: Use utf8mb4 for full Unicode support (including emojis)
+CREATE TABLE posts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+// ❌ Bad: Missing charset in PDO DSN
+$dsn = 'mysql:host=localhost;dbname=mydb';
+$pdo = new PDO($dsn, $user, $pass);
+// Default charset might be latin1!
+
+
+// ✅ Good: Specify charset=utf8mb4 in DSN
+$dsn = 'mysql:host=localhost;port=3306;dbname=mydb;charset=utf8mb4';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
+];
+$pdo = new PDO($dsn, $user, $pass, $options);
+
+
+// ✅ Good: Verify charset after connection
+$stmt = $pdo->query("SHOW VARIABLES LIKE 'character_set_%'");
+$charsets = $stmt->fetchAll();
+// Verify all are utf8mb4
+
+
+// ✅ Good: Convert existing table to utf8mb4
+ALTER TABLE posts
+CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+// Convert all tables in database
+ALTER DATABASE mydb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+**Check current character sets**:
+
+```sql
+-- Show database charset
+SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
+FROM information_schema.SCHEMATA
+WHERE SCHEMA_NAME = 'your_database';
+
+-- Show table charset
+SHOW TABLE STATUS WHERE Name = 'posts';
+
+-- Show column charset
+SHOW FULL COLUMNS FROM posts;
+
+-- Show connection charset
+SHOW VARIABLES LIKE 'character_set%';
+SHOW VARIABLES LIKE 'collation%';
+```
+
+---
 
 ## References
 
