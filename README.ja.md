@@ -317,7 +317,7 @@ adaptive-claude-agents/
 │   ├── vanilla-php-web/
 │   ├── python-ml/
 │   └── ios-swift/
-├── docs/                      # ユーザードキュメント
+├── docs/                      # ユーザドキュメント
 └── install.sh                 # インストールスクリプト
 ```
 

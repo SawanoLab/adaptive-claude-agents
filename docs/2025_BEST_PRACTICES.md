@@ -9,6 +9,7 @@ This document provides up-to-date guidance on modern development patterns, tool 
 
 ## Table of Contents
 
+- [Model Selection (Haiku 4.5 vs Sonnet 4.5)](#model-selection-haiku-45-vs-sonnet-45)
 - [Browser Automation](#browser-automation)
 - [Next.js 15](#nextjs-15)
 - [FastAPI](#fastapi)
@@ -18,6 +19,151 @@ This document provides up-to-date guidance on modern development patterns, tool 
 - [iOS Swift](#ios-swift-swiftui-vs-uikit)
 - [React State Management](#react-state-management-vite)
 - [Activation Triggers Guide](#activation-triggers-guide)
+
+---
+
+## Model Selection (Haiku 4.5 vs Sonnet 4.5)
+
+**Since**: Claude Code v2.0.17 (October 2025)
+**Recommendation**: Use **Haiku 4.5** for simple tasks to reduce costs by 60-80%
+
+### Model Comparison
+
+| Aspect | Haiku 4.5 | Sonnet 4.5 |
+|--------|-----------|------------|
+| **Cost** | ✅ 3-5x cheaper | 💰 Higher cost |
+| **Speed** | ✅ 2-3x faster | Moderate |
+| **Best For** | Simple edits, tests, verification | Complex reasoning, planning |
+| **Context** | 200K tokens | 200K tokens |
+| **Quality** | High for straightforward tasks | Highest for all tasks |
+
+### When to Use Each Model
+
+#### ✅ Use Haiku 4.5 (60-80% cost savings)
+
+**1. Single File Simple Edits**
+```
+User: "file1.jsのtypoを修正して"
+→ Haiku 4.5: 定型作業、コスト最小
+```
+
+**2. Test Execution & Validation**
+```
+User: "テストを実行して結果を報告"
+→ Haiku 4.5: 検証作業、推論不要
+```
+
+**3. Code Formatting & Linting**
+```
+User: "このファイルをPrettierでフォーマット"
+→ Haiku 4.5: 機械的な作業
+```
+
+**4. Documentation Updates (Simple)**
+```
+User: "README.mdのバージョン番号を1.2.0に更新"
+→ Haiku 4.5: 単純な置換作業
+```
+
+**5. Git Operations**
+```
+User: "変更をコミットして"
+→ Haiku 4.5: 定型コマンド実行
+```
+
+#### 🎯 Use Sonnet 4.5 (高精度が必要)
+
+**1. Architecture Design & Planning**
+```
+User: "認証システムの設計を考えて"
+→ Sonnet 4.5: 複雑な推論が必要
+```
+
+**2. Debugging Complex Issues**
+```
+User: "このメモリリークの原因を調査"
+→ Sonnet 4.5: 深い分析が必要
+```
+
+**3. Multi-File Refactoring**
+```
+User: "5つのファイルでAPI仕様を変更"
+→ Sonnet 4.5: 依存関係の理解が必要
+```
+
+**4. Code Review**
+```
+User: "このPRをレビューして"
+→ Sonnet 4.5: セキュリティ・パフォーマンスの判断
+```
+
+**5. Codebase Exploration**
+```
+User: "この関数がどこで使われているか調査"
+→ Sonnet 4.5: コンテキスト理解が重要
+```
+
+### Cost-Benefit Analysis
+
+| Task Type | Haiku Cost | Sonnet Cost | Savings | Quality Trade-off |
+|-----------|-----------|-------------|---------|-------------------|
+| Typo fix (1 file) | $0.001 | $0.005 | **80%** | ✅ None |
+| Test execution | $0.002 | $0.010 | **80%** | ✅ None |
+| Git commit | $0.001 | $0.003 | **67%** | ✅ None |
+| Simple docs update | $0.001 | $0.004 | **75%** | ✅ None |
+| Code review | $0.015 | $0.020 | 25% | ⚠️ Lower thoroughness |
+| Architecture design | $0.030 | $0.040 | 25% | ❌ Significant |
+
+**推奨コスト配分**:
+- Haiku 4.5: 単純タスクの60-70% → **コスト削減60-80%**
+- Sonnet 4.5: 複雑タスクの30-40% → **品質維持**
+
+### How to Select Model in Claude Code
+
+**Auto Mode (推奨)**:
+```bash
+# SonnetPlanモードを使用（デフォルト）
+# Plan時はSonnet、実行時は自動でHaikuに切り替わる
+claude --model sonnet-plan
+```
+
+**Manual Selection**:
+```bash
+# Haikuを明示的に指定（単純タスク向け）
+claude --model haiku
+
+# Sonnetを明示的に指定（複雑タスク向け）
+claude --model sonnet
+```
+
+**Interactive Mode**:
+```
+> /model haiku    # Switch to Haiku 4.5
+> /model sonnet   # Switch to Sonnet 4.5
+```
+
+### Practical Guidelines
+
+**Rule of Thumb**:
+1. **タスクが5分未満で説明できる** → Haiku 4.5
+2. **複数の判断が必要** → Sonnet 4.5
+3. **不確実な場合** → Sonnet 4.5から開始（安全側）
+
+**Team Policy Example**:
+```yaml
+# .claude/settings.json
+{
+  "defaultModel": "sonnet-plan",  # Auto-switching enabled
+  "simpleTasksModel": "haiku",
+  "complexTasksModel": "sonnet",
+  "costOptimization": true
+}
+```
+
+**Expected Monthly Savings** (for typical developer):
+- **Before**: $150/month (Sonnet only)
+- **After**: $60-80/month (60% Haiku, 40% Sonnet)
+- **Savings**: **$70-90/month** (47-60%)
 
 ---
 

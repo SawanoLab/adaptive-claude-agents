@@ -3,7 +3,7 @@
 ## Overview
 
 **Skill Name**: Adaptive Claude Agents
-**Version**: 0.4.3-beta
+**Version**: 1.1.0
 **Purpose**: Auto-generate project-specific Claude Code subagents that adapt to your development phase and framework.
 
 This skill enables Claude to:
