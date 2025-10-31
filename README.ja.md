@@ -6,7 +6,7 @@
 > **初心者に最適** - 5分でVibeコーディング開始！
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)](#インストール)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/SawanoLab/adaptive-claude-agents/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
