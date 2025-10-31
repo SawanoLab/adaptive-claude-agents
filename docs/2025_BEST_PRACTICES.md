@@ -9,6 +9,7 @@ This document provides up-to-date guidance on modern development patterns, tool 
 
 ## Table of Contents
 
+- [Token Optimization for Subagents](#token-optimization-for-subagents-2025)
 - [Model Selection (Haiku 4.5 vs Sonnet 4.5)](#model-selection-haiku-45-vs-sonnet-45)
 - [Browser Automation](#browser-automation)
 - [Next.js 15](#nextjs-15)
@@ -19,6 +20,297 @@ This document provides up-to-date guidance on modern development patterns, tool 
 - [iOS Swift](#ios-swift-swiftui-vs-uikit)
 - [React State Management](#react-state-management-vite)
 - [Activation Triggers Guide](#activation-triggers-guide)
+
+---
+
+## Token Optimization for Subagents (2025)
+
+**Last Updated**: 2025-10-31
+**Source**: [Anthropic Best Practices](https://docs.claude.com/en/docs/claude-code), Community Research (2025)
+
+### 🎯 Core Strategies
+
+| Strategy | Token Reduction | Implementation Difficulty | Priority |
+|----------|-----------------|---------------------------|----------|
+| **Markdown Shared Memory** | 50-60% | Easy | 🔴 High |
+| **Context Compression** | 60-80% | Medium | 🔴 High |
+| **Just-in-Time Loading** | 40-50% | Medium | 🟡 Medium |
+| **Token-Efficient Tools Beta** | 10-20% | Easy (API header) | 🟢 Low |
+| **Parallel Processing Limits** | Variable | Easy (guidelines) | 🔴 High |
+
+### Expected Overall Savings
+
+**Baseline (no optimization)**: 100,000 tokens/session
+**After full optimization**: 30,000-50,000 tokens/session
+**Total savings**: **50-70% reduction**
+
+### 1. Markdown Shared Memory Pattern
+
+**Principle**: Subagents save detailed reports to `.claude/reports/`, returning only summaries to the main agent.
+
+**Before** (wasteful):
+```text
+Subagent returns 10,000 token detailed report
+→ Main agent context grows by 10,000 tokens
+→ Every subsequent message costs more
+```
+
+**After** (efficient):
+```text
+Subagent saves report to .claude/reports/analysis-20251031.md
+Subagent returns 200 token summary
+→ Main agent context grows by only 200 tokens
+→ 98% token reduction on report transmission
+```
+
+**Implementation**:
+
+```markdown
+## Subagent Output Format (REQUIRED)
+
+### Summary (3-5 lines)
+- Key finding 1
+- Key finding 2
+- Key finding 3
+
+### Details
+Saved to: `.claude/reports/[task-name]-YYYYMMDD-HHMMSS.md`
+
+### Recommendations
+1. [Action item 1]
+2. [Action item 2]
+```
+
+### 2. Context Compression
+
+**Principle**: Only pass essential context to subagents. Use file paths and identifiers instead of full file contents.
+
+**Bad Example**:
+```python
+# Passing 50,000 tokens of context
+context = {
+    "files": [
+        {"path": "api/users.py", "content": "... 5000 lines ..."},
+        {"path": "api/auth.py", "content": "... 3000 lines ..."},
+        # ... 10 more files
+    ]
+}
+subagent.execute(context)  # 50,000 tokens
+```
+
+**Good Example**:
+```python
+# Passing only 500 tokens of context
+context = {
+    "task": "Review authentication logic",
+    "files": ["api/users.py", "api/auth.py"],  # Paths only
+    "focus_areas": ["login", "token_refresh"]
+}
+subagent.execute(context)  # 500 tokens
+# Subagent reads files internally as needed
+```
+
+**Savings**: 99% reduction in context transfer
+
+### 3. Just-in-Time Context Loading
+
+**Principle**: Load context progressively, not upfront.
+
+**Three-Tier Loading Strategy**:
+
+```text
+Tier 1: Overview (500 tokens)
+  - Use mcp__serena__get_symbols_overview
+  - Get file structure without content
+
+Tier 2: Targeted (2,000 tokens)
+  - Use mcp__serena__find_symbol
+  - Load specific functions/classes
+
+Tier 3: Full Read (5,000+ tokens)
+  - Use Read tool as last resort
+  - Only for small files (<200 lines)
+```
+
+**Example Workflow**:
+
+```python
+# Step 1: Get overview (500 tokens)
+overview = mcp__serena__get_symbols_overview("large_file.py")
+
+# Step 2: Identify target (based on overview)
+if "process_payment" in [s.name for s in overview.symbols]:
+    # Step 3: Load only target (1,500 tokens)
+    symbol = mcp__serena__find_symbol(
+        "process_payment",
+        "large_file.py",
+        include_body=True
+    )
+
+# Avoided reading 10,000 token file
+# Savings: 8,000 tokens (80%)
+```
+
+### 4. Token-Efficient Tools Beta
+
+**New Feature** (February 2025): Anthropic's official token reduction API
+
+**Usage**:
+```python
+headers = {
+    "anthropic-beta": "token-efficient-tools-2025-02-19"
+}
+
+response = anthropic.messages.create(
+    model="claude-sonnet-4-5",
+    headers=headers,  # Enable token efficiency
+    messages=[...]
+)
+```
+
+**Effect**: Automatic 10-20% reduction in tool use tokens
+
+### 5. Parallel Processing Cost Management
+
+**Warning**: Claude Code can automatically spawn 5+ parallel subagents, rapidly consuming tokens.
+
+**Guidelines**:
+
+```yaml
+✅ Approved Parallel Processing:
+  - 2-3 independent tasks
+  - Total estimated tokens: <60,000
+  - Time savings: >30 minutes
+  - Example: "Run tests" + "Generate docs"
+
+❌ Prohibited Parallel Processing:
+  - 5+ simultaneous subagents
+  - No token budget estimate
+  - Simple tasks with excessive parallelization
+  - Example: "Check 10 files" → 10 parallel subagents (wasteful)
+```
+
+**Monitoring**:
+
+```bash
+# Log token estimates before spawning subagents
+echo "Spawning 3 subagents, estimated total: 45,000 tokens"
+# Proceed only if within budget
+```
+
+### 6. Dynamic Context Allocation
+
+**Principle**: Allocate context size based on task complexity
+
+**Examples**:
+
+```text
+Simple task: "Fix typo in README.md"
+→ Allocate 5,000 tokens
+→ Use Haiku 4.5
+
+Medium task: "Review API authentication"
+→ Allocate 20,000 tokens
+→ Use Sonnet 4.5
+
+Complex task: "Refactor entire auth system"
+→ Allocate 100,000 tokens
+→ Use Sonnet 4.5 + multiple subagents
+```
+
+### Implementation Priority
+
+#### Phase 1: Immediate (Easy + High Impact)
+
+1. **Markdown Shared Memory** → 50-60% savings
+2. **Parallel Processing Limits** → Prevent token spikes
+3. **Token-Efficient Tools Beta** → 10-20% savings (API header only)
+
+**Expected Phase 1 savings**: 20-30% reduction
+
+#### Phase 2: Short-term (Medium Difficulty + High Impact)
+
+1. **Context Compression** → 60-80% savings per delegation
+2. **Just-in-Time Loading** → 40-50% savings
+3. **Dynamic Context Allocation** → 20-30% savings
+
+**Expected Phase 2 savings**: Additional 30-40% reduction
+
+#### Phase 3: Ongoing (Monitoring & Refinement)
+
+1. Token usage analytics
+2. Adjust thresholds based on metrics
+3. Template optimization based on data
+
+**Expected Phase 3 savings**: Additional 10-20% reduction
+
+### Real-World Example
+
+**Before Optimization**:
+```text
+User: "Review all API endpoints and generate test coverage report"
+
+Main Agent:
+  - Reads 15 API files (30,000 tokens)
+  - Spawns 5 parallel review subagents
+  - Each subagent receives full context (30,000 tokens)
+  - Each returns 5,000 token report
+
+Total: 30,000 + (5 × 30,000) + (5 × 5,000) = 205,000 tokens
+Cost: ~$0.80 (Sonnet 4.5)
+```
+
+**After Optimization**:
+```text
+User: "Review all API endpoints and generate test coverage report"
+
+Main Agent:
+  - Passes file paths only (500 tokens)
+  - Spawns 1 review subagent (sequential processing)
+  - Subagent loads files progressively (10,000 tokens)
+  - Subagent saves report to .claude/reports/api-review.md
+  - Returns 200 token summary
+
+Total: 500 + 10,000 + 200 = 10,700 tokens
+Cost: ~$0.05 (Sonnet 4.5)
+Savings: 95% ($0.75 saved)
+```
+
+### Monitoring & Metrics
+
+**Key Metrics to Track**:
+
+```yaml
+Token Usage:
+  - Tokens per session
+  - Tokens per subagent spawn
+  - Context size growth rate
+
+Efficiency:
+  - Tasks completed per 10k tokens
+  - Average subagent report size
+  - Parallel spawn frequency
+
+Cost:
+  - Daily/weekly token spend
+  - Cost per task type
+  - Savings vs baseline
+```
+
+**Target Metrics** (after full optimization):
+
+```yaml
+Tokens per session: <50,000 (down from 100,000)
+Subagent reports: <500 tokens (down from 5,000)
+Parallel spawns: <3 simultaneous (down from 5+)
+Monthly cost reduction: 50-70%
+```
+
+### Resources
+
+- [Anthropic Token-Efficient Tool Use](https://docs.claude.com/en/docs/agents-and-tools/tool-use/token-efficient-tool-use)
+- [Claude Code Subagents Guide](https://docs.claude.com/en/docs/claude-code/sub-agents)
+- [Community: Token Optimization Patterns (2025)](https://medium.com/@sampan090611/experiences-on-claude-codes-subagent-and-little-tips-for-using-claude-code-c4759cd375a7)
 
 ---
 

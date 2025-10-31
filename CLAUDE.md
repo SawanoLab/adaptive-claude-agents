@@ -135,11 +135,188 @@ chore: バージョン更新、ビルド設定など
    - テンプレート追加が容易
    - 貢献しやすい設計
 
+## サブエージェント トークン最適化戦略（2025年版）
+
+### 🔑 Core Principle: Researchers, Not Implementers
+
+**重要**: サブエージェントは「調査・分析」のみ行い、実装は親エージェントが担当
+
+この原則により、トークン使用量を**50-60%削減**できます。
+
+#### ❌ 悪い例（トークン浪費）
+
+```text
+User: "全APIエンドポイントをレビューして"
+
+親エージェント → api-reviewer サブエージェント
+  サブエージェントが全ファイルを読み込み
+  詳細なレポート（10,000トークン）を返す
+  親エージェントがコンテキストに追加
+  → トークン消費: 25,000
+```
+
+#### ✅ 良い例（トークン効率的）
+
+```text
+User: "全APIエンドポイントをレビューして"
+
+親エージェント → api-reviewer サブエージェント
+  サブエージェントが調査し、Markdownサマリーを返す:
+  「## 発見事項
+   - endpoint1.py: 認証なし（要修正）
+   - endpoint2.py: エラーハンドリング不足
+   → 詳細は .claude/review-summary.md に保存済み」
+  → トークン消費: 8,000（68%削減）
+```
+
+### 📝 Markdown Shared Memory Pattern
+
+**最も効果的なトークン削減手法（3-4倍の効率化）**
+
+```text
+サブエージェント:
+1. 詳細な調査を実行
+2. 結果を .claude/reports/[task-name]-YYYYMMDD.md に保存
+3. 親エージェントには3-5行のサマリーのみ返す
+
+親エージェント:
+1. サマリーで判断
+2. 必要な場合のみ .claude/reports/*.md を読む
+```
+
+**実装例:**
+
+```markdown
+## サブエージェントの出力フォーマット
+
+### Summary (3-5 lines)
+- Key finding 1
+- Key finding 2
+- Key finding 3
+
+### Details
+Saved to: `.claude/reports/api-review-20251031.md`
+
+### Recommendations
+1. [Action item 1]
+2. [Action item 2]
+```
+
+### ⚡ Context Compression（60-80%削減）
+
+**原則**: サブエージェントに渡すコンテキストを最小化
+
+```python
+# ❌ 悪い例
+def delegate_to_subagent(full_codebase_context):
+    # 全コンテキストを渡す（50,000トークン）
+    result = subagent.execute(full_codebase_context)
+
+# ✅ 良い例
+def delegate_to_subagent(task):
+    # 必要なファイルパスのみ渡す（500トークン）
+    relevant_files = ["api/users.py", "api/auth.py"]
+    result = subagent.execute({
+        "task": task,
+        "files": relevant_files  # サブエージェント内で読み込む
+    })
+```
+
+### 📍 Just-in-Time Context Loading
+
+**原則**: ファイルパスや識別子を保持し、必要な時のみロード
+
+```text
+❌ 悪い例: 事前に全ファイルを読み込む（20,000トークン）
+✅ 良い例: ファイルパスのリストを保持し、必要な時に Read ツールで取得（2,000トークン）
+```
+
+**実装パターン:**
+
+```markdown
+## サブエージェントのContext Loading戦略
+
+1. **Initial（概要取得）**:
+   - mcp__serena__get_symbols_overview でファイル構造のみ取得
+   - トークン: ~500
+
+2. **Targeted（必要な部分のみ）**:
+   - mcp__serena__find_symbol で特定のシンボルを取得
+   - トークン: ~2,000
+
+3. **Full Read（最終手段）**:
+   - 小さいファイル(<200行)のみ
+   - トークン: ~3,000
+```
+
+### 🚨 並列処理コスト管理（重要）
+
+**危険**: Claude Codeは自動で5つ以上の並列サブエージェントを起動可能
+
+**問題**: トークンを急速に消費し、クォータを使い果たす
+
+**ガイドライン**:
+
+```yaml
+✅ 許可される並列処理:
+  - 独立した2-3タスク
+    例: "テスト実行" + "ドキュメント生成"
+  - 最大トークン予測: 各20k × 3 = 60k
+  - 時間節約: 30分以上
+
+❌ 禁止される並列処理:
+  - 5+サブエージェント同時起動
+  - トークン予測なしの無制限並列化
+  - 単純タスクの過剰な分割
+```
+
+**モニタリング**:
+
+```bash
+# トークン使用量の確認（推奨）
+# 各サブエージェント起動前に推定値をログ出力
+echo "Estimated tokens: 15,000 (within budget)"
+```
+
+### 🔧 Token-Efficient Tools (Anthropic公式機能)
+
+**2025年2月リリース**: `token-efficient-tools-2025-02-19` ベータヘッダー
+
+**使用方法**（API統合時）:
+
+```python
+# Claude API使用時に追加
+headers = {
+    "anthropic-beta": "token-efficient-tools-2025-02-19"
+}
+```
+
+**効果**: ツール使用時のトークンを自動削減（10-20%）
+
+### 📊 期待されるトークン削減効果
+
+| 手法 | トークン削減率 | 実装難易度 | 優先度 |
+|------|--------------|-----------|--------|
+| Markdown Shared Memory | 50-60% | 易 | 🔴 高 |
+| Context Compression | 60-80% | 中 | 🔴 高 |
+| Just-in-Time Loading | 40-50% | 中 | 🟡 中 |
+| Token-Efficient Tools Beta | 10-20% | 易 | 🟢 低 |
+| Parallel Processing Limits | 変動 | 易 | 🔴 高 |
+
+**総合削減目標**: セッションあたり**60-70%削減**
+
+- **Before**: 100,000 tokens/session
+- **After**: 30,000-50,000 tokens/session
+
+---
+
 ## サブエージェント活用ガイド（2025年版）
 
 ### 🎯 AGGRESSIVE ポリシー（デフォルト）
 
 **このプロジェクトをインストール = サブエージェントを積極的に使いたい**
+
+**ただし、トークン最適化戦略を遵守すること**
 
 以下の条件に該当する場合、**必ずTaskツールでサブエージェントを使用してください:**
 
